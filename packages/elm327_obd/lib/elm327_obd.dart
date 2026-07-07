@@ -7,3 +7,4 @@ library;
 export 'src/transport.dart';
 export 'src/errors.dart';
 export 'src/at_commands.dart';
+export 'src/obd_request.dart';
