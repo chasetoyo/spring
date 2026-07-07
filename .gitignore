@@ -8,3 +8,7 @@ build/
 .flutter-plugins-dependencies
 pubspec.lock
 pubspec_overrides.yaml
+
+# Superpowers scratch docs (specs/plans) are working files for the
+# skill workflow, not project documentation - never commit them.
+docs/superpowers/

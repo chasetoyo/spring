@@ -1,39 +1,44 @@
-<!--
-This README describes the package. If you publish this package to pub.dev,
-this README's contents appear on the landing page for your package.
+# elm327_obd_bluetooth
 
-For information about how to write a good package README, see the guide for
-[writing package pages](https://dart.dev/tools/pub/writing-package-pages).
+Bluetooth Classic SPP transport for `elm327_obd`, wrapping
+`flutter_bluetooth_serial`. Contains no AT/OBD knowledge — it only moves
+bytes, proving the transport/core separation described in the project's
+design is real.
 
-For general information about developing packages, see the Dart guide for
-[creating packages](https://dart.dev/guides/libraries/create-packages)
-and the Flutter guide for
-[developing packages and plugins](https://flutter.dev/to/develop-packages).
--->
-
-TODO: Put a short description of the package here that helps potential users
-know whether this package might be useful for them.
-
-## Features
-
-TODO: List what your package can do. Maybe include images, gifs, or videos.
-
-## Getting started
-
-TODO: List prerequisites and provide or point to information on how to
-start using the package.
+ELM327 adapters are almost universally Bluetooth Classic (SPP), not BLE, so
+this package targets Android/iOS via `flutter_bluetooth_serial` rather than
+a BLE plugin.
 
 ## Usage
 
-TODO: Include short and useful examples for package users. Add longer examples
-to `/example` folder.
-
 ```dart
-const like = 'sample';
+import 'package:elm327_obd/elm327_obd.dart';
+import 'package:elm327_obd_bluetooth/elm327_obd_bluetooth.dart';
+
+final devices = await BluetoothElm327Transport.getBondedDevices();
+final transport = await BluetoothElm327Transport.connect(devices.first.address);
+
+final client = Elm327Client(transport);
+await client.connect();
+
+// ...later:
+await transport.disconnect();
 ```
 
-## Additional information
+## Permissions
 
-TODO: Tell users more about the package: where to find more information, how to
-contribute to the package, how to file issues, what response they can expect
-from the package authors, and more.
+`BluetoothElm327Transport` requests the Android runtime permissions it needs
+(`bluetoothScan`, `bluetoothConnect`, `locationWhenInUse`) internally before
+scanning or connecting, via `permission_handler`. Consuming apps still need
+to declare the corresponding `<uses-permission>` entries in their own
+`AndroidManifest.xml` — see `apps/elm327_demo/android/app/src/main/AndroidManifest.xml`
+for the exact set (covers both pre-Android-12 and Android 12+ permission
+models).
+
+## Testing
+
+Unit tests (`flutter test`) cover what can be verified without hardware
+(e.g. that the transport implements the core interface). A full
+`connect()`-to-adapter round trip requires a real Bluetooth adapter and is
+exercised through the `elm327_demo` app instead, not this package's unit
+tests.
