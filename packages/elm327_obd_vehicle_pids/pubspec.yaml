@@ -5,6 +5,7 @@ publish_to: none
 
 environment:
   sdk: ^3.8.0
+resolution: workspace
 
 dependencies:
   elm327_obd:
@@ -12,4 +13,4 @@ dependencies:
 
 dev_dependencies:
   test: ^1.25.0
-  lints: ^4.0.0
+  lints: ^5.0.0
