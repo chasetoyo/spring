@@ -6,8 +6,9 @@ polished production diagnostic app.
 
 ## Screens
 
-- **Device picker** — lists paired Bluetooth devices (via
-  `elm327_obd_bluetooth`), connects on tap, surfaces connection errors.
+- **Device picker** — scans for nearby BLE devices (via
+  `elm327_obd_bluetooth`), connects on tap, surfaces connection errors. No
+  OS-level pairing needed first for BLE serial-bridge adapters like this.
 - **Dashboard** — polls engine RPM, vehicle speed, coolant temp, and
   throttle position once per second; "Read DTCs" / "Clear DTCs" buttons
   (clearing prompts for confirmation, since Mode 04 also wipes freeze-frame
@@ -17,9 +18,9 @@ polished production diagnostic app.
 
 ## Running it
 
-ELM327 adapters are Bluetooth Classic (SPP), which isn't supported on
-desktop or web — you need a real Android device and a paired ELM327
-adapter:
+This project targets a Veepeak OBDCheck BLE/BLE+ adapter over Bluetooth Low
+Energy. Validated on a real connected Android device — you need one of
+those (plus the adapter) to actually exercise the Bluetooth path:
 
 ```bash
 flutter pub get

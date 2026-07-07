@@ -28,7 +28,7 @@ class _RootScreen extends StatefulWidget {
 
 class _RootScreenState extends State<_RootScreen> {
   Elm327Client? _client;
-  BluetoothElm327Transport? _transport;
+  BleElm327Transport? _transport;
 
   @override
   void dispose() {

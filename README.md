@@ -15,28 +15,26 @@ and status summary.
 |---|---|---|
 | [`packages/elm327_obd`](packages/elm327_obd) | Pure Dart | AT-command/OBD-II protocol core: no Flutter or Bluetooth dependency |
 | [`packages/elm327_obd_vehicle_pids`](packages/elm327_obd_vehicle_pids) | Pure Dart | Manufacturer-specific custom PID catalogs (Subaru, with more to come) |
-| [`packages/elm327_obd_bluetooth`](packages/elm327_obd_bluetooth) | Flutter | Bluetooth Classic SPP transport implementing the core's transport interface |
+| [`packages/elm327_obd_bluetooth`](packages/elm327_obd_bluetooth) | Flutter | Bluetooth Low Energy (BLE) transport implementing the core's transport interface |
 | [`apps/elm327_demo`](apps/elm327_demo) | Flutter app | Device picker, live dashboard, and raw AT/OBD terminal for end-to-end verification |
 
 ## Getting started
 
 ```bash
 dart pub global activate melos
-dart pub get          # resolves the whole workspace (Dart pub workspaces)
-melos list            # confirm all four packages are recognized
+flutter pub get   # resolves the whole workspace (Dart pub workspaces) - use
+                  # flutter, not dart, since some member packages need the
+                  # Flutter SDK constraint
+melos list        # confirm all four packages are recognized
 ```
 
-Run tests/analysis per package:
+See **[`docs/commands.md`](docs/commands.md)** for the full command
+reference: running tests, analyzing, running/building the demo app,
+cleaning, and melos-specific commands (this repo is new to melos, so it's
+written assuming no prior familiarity).
 
-```bash
-cd packages/elm327_obd && dart test && dart analyze
-cd packages/elm327_obd_vehicle_pids && dart test && dart analyze
-cd packages/elm327_obd_bluetooth && flutter test && flutter analyze
-cd apps/elm327_demo && flutter test && flutter analyze
-```
-
-To run the demo app, pair a real ELM327 Bluetooth adapter with an Android
-device (Bluetooth Classic SPP isn't supported on desktop/web), then:
+To run the demo app, pair a real ELM327 BLE adapter (this project targets a
+Veepeak OBDCheck BLE/BLE+) with a connected Android device, then:
 
 ```bash
 cd apps/elm327_demo

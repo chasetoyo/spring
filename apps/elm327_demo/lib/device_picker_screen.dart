@@ -1,14 +1,18 @@
+import 'dart:async';
+
 import 'package:elm327_obd/elm327_obd.dart';
 import 'package:elm327_obd_bluetooth/elm327_obd_bluetooth.dart';
 import 'package:flutter/material.dart';
 
-/// Lists paired Bluetooth devices and connects to the one the user
-/// taps, then hands the connected [Elm327Client] and its underlying
-/// [BluetoothElm327Transport] to [onConnected].
+/// Scans for nearby BLE devices and connects to the one the user taps,
+/// then hands the connected [Elm327Client] and its underlying
+/// [BleElm327Transport] to [onConnected]. BLE serial-bridge adapters like
+/// this typically don't need OS-level pairing first — a scan result is
+/// enough to connect.
 class DevicePickerScreen extends StatefulWidget {
   const DevicePickerScreen({required this.onConnected, super.key});
 
-  final void Function(Elm327Client client, BluetoothElm327Transport transport)
+  final void Function(Elm327Client client, BleElm327Transport transport)
   onConnected;
 
   @override
@@ -16,49 +20,81 @@ class DevicePickerScreen extends StatefulWidget {
 }
 
 class _DevicePickerScreenState extends State<DevicePickerScreen> {
-  List<BluetoothDevice> _devices = [];
-  String? _connectingAddress;
+  final Map<String, ScanResult> _results = {};
+  StreamSubscription<ScanResult>? _scanSubscription;
+  String? _connectingId;
   String? _error;
+  bool _scanning = false;
 
   @override
   void initState() {
     super.initState();
-    _loadDevices();
+    _startScan();
   }
 
-  Future<void> _loadDevices() async {
-    try {
-      final devices = await BluetoothElm327Transport.getBondedDevices();
-      setState(() => _devices = devices);
-    } catch (error) {
-      setState(() => _error = 'Could not list paired devices: $error');
-    }
+  @override
+  void dispose() {
+    _scanSubscription?.cancel();
+    BleElm327Transport.stopScan();
+    super.dispose();
   }
 
-  Future<void> _connect(BluetoothDevice device) async {
+  void _startScan() {
     setState(() {
-      _connectingAddress = device.address;
+      _scanning = true;
+      _error = null;
+      _results.clear();
+    });
+    _scanSubscription?.cancel();
+    _scanSubscription = BleElm327Transport.scan().listen(
+      (result) => setState(() => _results[result.device.remoteId.str] = result),
+      onDone: () => setState(() => _scanning = false),
+      onError: (error) => setState(() {
+        _error = 'Scan error: $error';
+        _scanning = false;
+      }),
+    );
+  }
+
+  Future<void> _connect(ScanResult result) async {
+    final id = result.device.remoteId.str;
+    setState(() {
+      _connectingId = id;
       _error = null;
     });
     try {
-      final transport = await BluetoothElm327Transport.connect(
-        device.address,
-      );
+      final transport = await BleElm327Transport.connect(result.device);
       final client = Elm327Client(transport);
       await client.connect();
       widget.onConnected(client, transport);
     } catch (error) {
       setState(() {
-        _error = 'Could not connect to ${device.name}: $error';
-        _connectingAddress = null;
+        _error = 'Could not connect to $id: $error';
+        _connectingId = null;
       });
     }
   }
 
   @override
   Widget build(BuildContext context) {
+    final devices = _results.values.toList()
+      ..sort((a, b) => b.rssi.compareTo(a.rssi));
     return Scaffold(
-      appBar: AppBar(title: const Text('Choose an ELM327 adapter')),
+      appBar: AppBar(
+        title: const Text('Choose an ELM327 adapter'),
+        actions: [
+          IconButton(
+            icon: _scanning
+                ? const SizedBox(
+                    width: 20,
+                    height: 20,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  )
+                : const Icon(Icons.refresh),
+            onPressed: _scanning ? null : _startScan,
+          ),
+        ],
+      ),
       body: Column(
         children: [
           if (_error != null)
@@ -67,27 +103,28 @@ class _DevicePickerScreenState extends State<DevicePickerScreen> {
               child: Text(_error!, style: const TextStyle(color: Colors.red)),
             ),
           Expanded(
-            child: RefreshIndicator(
-              onRefresh: _loadDevices,
-              child: ListView.builder(
-                itemCount: _devices.length,
-                itemBuilder: (context, index) {
-                  final device = _devices[index];
-                  final isConnecting = _connectingAddress == device.address;
-                  return ListTile(
-                    title: Text(device.name ?? device.address),
-                    subtitle: Text(device.address),
-                    trailing: isConnecting
-                        ? const SizedBox(
-                            width: 20,
-                            height: 20,
-                            child: CircularProgressIndicator(strokeWidth: 2),
-                          )
-                        : null,
-                    onTap: isConnecting ? null : () => _connect(device),
-                  );
-                },
-              ),
+            child: ListView.builder(
+              itemCount: devices.length,
+              itemBuilder: (context, index) {
+                final result = devices[index];
+                final id = result.device.remoteId.str;
+                final isConnecting = _connectingId == id;
+                final name = result.device.platformName.isNotEmpty
+                    ? result.device.platformName
+                    : result.advertisementData.advName;
+                return ListTile(
+                  title: Text(name.isNotEmpty ? name : id),
+                  subtitle: Text('$id  •  RSSI ${result.rssi}'),
+                  trailing: isConnecting
+                      ? const SizedBox(
+                          width: 20,
+                          height: 20,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        )
+                      : null,
+                  onTap: isConnecting ? null : () => _connect(result),
+                );
+              },
             ),
           ),
         ],

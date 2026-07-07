@@ -1,0 +1,159 @@
+# Command Reference
+
+This repo is a [melos](https://melos.invertase.dev/)-managed monorepo built
+on [Dart's native pub workspaces](https://dart.dev/tools/pub/workspaces).
+If you're new to melos: the important thing to know up front is that
+**`melos bootstrap` doesn't work in this repo** (see the note at the bottom)
+— use plain `flutter pub get` / `dart pub get` at the repo root instead.
+Melos is still useful here for `melos list` and running a command across
+every package at once (`melos exec`).
+
+All commands below assume your terminal's working directory is the repo
+root unless a `cd` is shown.
+
+## One-time setup
+
+```bash
+dart pub global activate melos   # only needed once per machine
+```
+
+## Installing dependencies
+
+```bash
+flutter pub get
+```
+
+This resolves **the whole workspace** in one shot — all four packages
+(`elm327_obd`, `elm327_obd_vehicle_pids`, `elm327_obd_bluetooth`,
+`elm327_demo`) share a single `pubspec.lock`. You don't need to run this
+separately inside each package directory; running it from the root is
+enough, and it also works when run from inside a package directory (pub
+walks up to find the workspace root automatically).
+
+Use `flutter pub get` rather than `dart pub get` — some member packages
+depend on the Flutter SDK, and plain `dart pub get` doesn't always resolve
+that constraint correctly from the root.
+
+## Listing packages
+
+```bash
+melos list
+```
+
+Confirms melos recognizes all four packages. Useful as a sanity check after
+adding a new package to `packages/` or `apps/`.
+
+## Running tests
+
+Pure-Dart packages use `dart test`; Flutter packages/apps use `flutter test`.
+
+```bash
+cd packages/elm327_obd && dart test
+cd packages/elm327_obd_vehicle_pids && dart test
+cd packages/elm327_obd_bluetooth && flutter test
+cd apps/elm327_demo && flutter test
+```
+
+Run a single test file:
+
+```bash
+cd packages/elm327_obd && dart test test/client_test.dart
+```
+
+Run every package's tests in one command with melos:
+
+```bash
+melos exec -- "dart test || flutter test"
+```
+
+(melos runs the command in each package's directory; the `||` fallback
+handles the fact that pure-Dart packages don't have `flutter test`
+available, and vice versa — if that feels fragile, just run the four
+commands above individually.)
+
+## Static analysis
+
+```bash
+cd packages/elm327_obd && dart analyze
+cd packages/elm327_obd_vehicle_pids && dart analyze
+cd packages/elm327_obd_bluetooth && flutter analyze
+cd apps/elm327_demo && flutter analyze
+```
+
+Or across everything at once:
+
+```bash
+melos exec -- "dart analyze || flutter analyze"
+```
+
+## Running the demo app
+
+BLE (the Veepeak adapter this project targets) requires a real device —
+desktop/web targets can't complete an actual Bluetooth connection, though
+the app will still launch and show the UI on them.
+
+```bash
+cd apps/elm327_demo
+flutter devices                    # find your Android device's ID
+flutter run -d <android-device-id>
+```
+
+Common `flutter run` keys once it's running: `r` hot reload, `R` hot
+restart, `q` quit.
+
+## Building
+
+```bash
+cd apps/elm327_demo
+
+flutter build apk --debug     # debug APK, fast, for local testing
+flutter build apk --release   # release APK
+flutter build web             # web build (UI-only smoke check — no real BLE)
+```
+
+Debug/release APKs land in `apps/elm327_demo/build/app/outputs/flutter-apk/`.
+
+## Cleaning
+
+```bash
+cd apps/elm327_demo && flutter clean
+```
+
+`flutter clean` removes that package's `build/` directory and Dart/Flutter
+caches for a fresh rebuild. Run it if you hit strange stale-build errors
+after a dependency or Gradle config change. It doesn't touch
+`pubspec.lock` — you may need `flutter pub get` afterward.
+
+For a broader reset (any package, not just the app):
+
+```bash
+rm -rf packages/*/build apps/*/build
+rm -rf packages/*/.dart_tool apps/*/.dart_tool .dart_tool
+```
+
+## Adding a dependency to one package
+
+Edit that package's `pubspec.yaml` directly (add under `dependencies:` or
+`dev_dependencies:`), then re-run `flutter pub get` from the repo root. You
+do **not** need `pubspec_overrides.yaml` for path dependencies between
+packages already in the workspace (`elm327_obd`, etc.) — the `workspace:`
+field in the root `pubspec.yaml` plus each package's `resolution: workspace`
+already handles that.
+
+## Why `melos bootstrap` doesn't work here
+
+Modern melos (3.0+, what's installed here) is designed to sit on top of
+Dart's native pub workspaces rather than its own legacy per-package
+`dependency_overrides` linking. In practice, `melos bootstrap` in this repo
+still tries to generate a `pubspec_overrides.yaml` per package to link
+sibling packages (e.g. `elm327_obd` into `elm327_obd_vehicle_pids`) — but
+that conflicts with `resolution: workspace`, which forbids overriding a
+package that's already a workspace member, and bootstrap fails with
+`Cannot override workspace packages`. `pubspec_overrides.yaml` is
+gitignored in case it gets regenerated by some tool; if you ever see one
+appear and cause problems, just delete it and re-run `flutter pub get`.
+
+The practical upshot: use `flutter pub get` at the root as your "bootstrap"
+step. It achieves the actual goal (single shared resolution, sibling
+packages linked via their existing `path:` dependencies) without melos's
+extra machinery.
