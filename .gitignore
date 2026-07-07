@@ -1,2 +1,9 @@
 .claude
 skills-lock.json
+.dart_tool/
+.packages
+build/
+*.iml
+.flutter-plugins
+.flutter-plugins-dependencies
+pubspec.lock

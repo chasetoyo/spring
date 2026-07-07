@@ -1,0 +1,9 @@
+name: elm327_workspace
+
+packages:
+  - packages/**
+  - apps/**
+
+command:
+  bootstrap:
+    runPubGetInParallel: true
