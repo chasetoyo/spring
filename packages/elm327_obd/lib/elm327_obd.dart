@@ -3,3 +3,6 @@
 /// Later tasks append one `export` line per public source file added
 /// under `lib/src/`.
 library;
+
+export 'src/transport.dart';
+export 'src/errors.dart';
