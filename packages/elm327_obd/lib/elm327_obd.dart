@@ -9,3 +9,4 @@ export 'src/errors.dart';
 export 'src/at_commands.dart';
 export 'src/obd_request.dart';
 export 'src/response.dart';
+export 'src/dtc.dart';
