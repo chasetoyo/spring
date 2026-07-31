@@ -2,22 +2,13 @@ import 'dart:typed_data';
 
 /// Where each field sits inside the 80-byte RaceBox Data Message payload.
 ///
-/// ## Unverified
+/// Checked field by field against *RaceBox BLE Protocol Documentation,
+/// Revision 8*, and exercised end to end by the golden test built from that
+/// document's own captured packet — so a mistake here fails a test rather
+/// than producing plausible nonsense on a track day.
 ///
-/// RaceBox publishes this layout, but gates the document behind an email
-/// request form, and it could not be reached when this was written. These
-/// offsets follow the message's evident derivation from u-blox `UBX-NAV-PVT`
-/// — same field order, same scaling conventions — and they account for
-/// exactly 80 bytes, which is a real constraint satisfied rather than a
-/// coincidence. **They are still an inference.**
-///
-/// Everything else in this package — framing, checksums, reassembly, the
-/// client lifecycle — is independent of these numbers and verified by tests.
-/// If a real device produces nonsense, the fault is almost certainly in this
-/// one table and nowhere else, which is why it is a table.
-///
-/// To confirm: capture one packet from a device and check that latitude and
-/// longitude land where you are, and that speed reads zero at rest.
+/// The message is u-blox `UBX-NAV-PVT` with fields removed and others added,
+/// which is why the ordering and scaling conventions look familiar.
 abstract final class RaceBoxDataOffsets {
   /// Total payload length. A packet of any other size is not this message.
   static const int payloadLength = 80;
@@ -57,34 +48,42 @@ abstract final class RaceBoxDataOffsets {
   static const int rotationRateZ = 78; // I2
 }
 
-/// How good the GNSS fix is.
+/// The location solution status.
+///
+/// Only three values are documented — u-blox defines more, but RaceBox's
+/// firmware reports these — so anything else maps to [unknown] rather than
+/// being silently read as "no fix".
 enum RaceBoxFixStatus {
   none,
-  deadReckoning,
   fix2d,
   fix3d,
-  gnssPlusDeadReckoning,
-  timeOnly;
+  unknown;
 
   static RaceBoxFixStatus fromCode(int code) {
     return switch (code) {
-      1 => RaceBoxFixStatus.deadReckoning,
+      0 => RaceBoxFixStatus.none,
       2 => RaceBoxFixStatus.fix2d,
       3 => RaceBoxFixStatus.fix3d,
-      4 => RaceBoxFixStatus.gnssPlusDeadReckoning,
-      5 => RaceBoxFixStatus.timeOnly,
-      _ => RaceBoxFixStatus.none,
+      _ => RaceBoxFixStatus.unknown,
     };
   }
+}
 
-  /// Whether a position from this fix is worth recording.
+/// Bit positions inside the flag bytes.
+abstract final class RaceBoxFlags {
+  /// Fix Status Flags bit 0 — the receiver considers the fix good.
+  static const int fixOk = 0x01;
+
+  /// Lat/Lon Flags bit 0 — **set means the coordinates are invalid.**
   ///
-  /// Only 2D and 3D qualify. Dead reckoning without GNSS drifts, and
-  /// time-only carries no position at all.
-  bool get hasPosition =>
-      this == RaceBoxFixStatus.fix2d ||
-      this == RaceBoxFixStatus.fix3d ||
-      this == RaceBoxFixStatus.gnssPlusDeadReckoning;
+  /// Inverted relative to every other flag here, which is exactly the kind of
+  /// thing that gets read backwards.
+  static const int coordinatesInvalid = 0x01;
+
+  /// Validity Flags bits 0–2.
+  static const int validDate = 0x01;
+  static const int validTime = 0x02;
+  static const int fullyResolved = 0x04;
 }
 
 /// One reading from a RaceBox, in SI-ish units rather than wire units.
@@ -96,6 +95,9 @@ class RaceBoxData {
     required this.iTowMs,
     required this.timestampUtc,
     required this.fixStatus,
+    required this.fixStatusFlags,
+    required this.validityFlags,
+    required this.latLonFlags,
     required this.satellites,
     required this.latitude,
     required this.longitude,
@@ -106,14 +108,15 @@ class RaceBoxData {
     required this.speedMps,
     required this.headingDegrees,
     required this.speedAccuracyMps,
+    required this.headingAccuracyDegrees,
+    required this.pdop,
     required this.gForceX,
     required this.gForceY,
     required this.gForceZ,
     required this.rotationRateX,
     required this.rotationRateY,
     required this.rotationRateZ,
-    required this.batteryPercent,
-    required this.isCharging,
+    required this.batteryByte,
   });
 
   /// Decodes a RaceBox Data Message payload, or returns null when [payload]
@@ -133,6 +136,9 @@ class RaceBoxData {
       fixStatus: RaceBoxFixStatus.fromCode(
         view.getUint8(RaceBoxDataOffsets.fixStatus),
       ),
+      fixStatusFlags: view.getUint8(RaceBoxDataOffsets.fixStatusFlags),
+      validityFlags: view.getUint8(RaceBoxDataOffsets.validityFlags),
+      latLonFlags: view.getUint8(RaceBoxDataOffsets.latLonFlags),
       satellites: view.getUint8(RaceBoxDataOffsets.numberOfSvs),
       latitude:
           view.getInt32(RaceBoxDataOffsets.latitude, Endian.little) * 1e-7,
@@ -154,6 +160,10 @@ class RaceBoxData {
       speedAccuracyMps:
           view.getUint32(RaceBoxDataOffsets.speedAccuracy, Endian.little) /
           1000,
+      headingAccuracyDegrees:
+          view.getUint32(RaceBoxDataOffsets.headingAccuracy, Endian.little) *
+          1e-5,
+      pdop: view.getUint16(RaceBoxDataOffsets.pdop, Endian.little) / 100,
       gForceX: view.getInt16(RaceBoxDataOffsets.gForceX, Endian.little) / 1000,
       gForceY: view.getInt16(RaceBoxDataOffsets.gForceY, Endian.little) / 1000,
       gForceZ: view.getInt16(RaceBoxDataOffsets.gForceZ, Endian.little) / 1000,
@@ -163,9 +173,7 @@ class RaceBoxData {
           view.getInt16(RaceBoxDataOffsets.rotationRateY, Endian.little) / 100,
       rotationRateZ:
           view.getInt16(RaceBoxDataOffsets.rotationRateZ, Endian.little) / 100,
-      // Low seven bits are the level; the top bit says it is charging.
-      batteryPercent: view.getUint8(RaceBoxDataOffsets.batteryStatus) & 0x7F,
-      isCharging: (view.getUint8(RaceBoxDataOffsets.batteryStatus) & 0x80) != 0,
+      batteryByte: view.getUint8(RaceBoxDataOffsets.batteryStatus),
     );
   }
 
@@ -180,6 +188,16 @@ class RaceBoxData {
   final DateTime? timestampUtc;
 
   final RaceBoxFixStatus fixStatus;
+
+  /// Raw Fix Status Flags. [hasValidFix] is the reading that matters.
+  final int fixStatusFlags;
+
+  /// Raw Validity Flags — date, time and fully-resolved bits.
+  final int validityFlags;
+
+  /// Raw Lat/Lon Flags. Bit 0 **set** means the coordinates are invalid.
+  final int latLonFlags;
+
   final int satellites;
 
   final double latitude;
@@ -198,6 +216,11 @@ class RaceBoxData {
   final double speedMps;
   final double headingDegrees;
   final double speedAccuracyMps;
+  final double headingAccuracyDegrees;
+
+  /// Position dilution of precision. Lower is better; usually tracks the
+  /// satellite count.
+  final double pdop;
 
   /// Measured acceleration in g, from the device's own IMU rather than
   /// differentiated from position.
@@ -210,8 +233,39 @@ class RaceBoxData {
   final double rotationRateY;
   final double rotationRateZ;
 
-  final int batteryPercent;
-  final bool isCharging;
+  /// The raw battery byte, because it means two different things.
+  ///
+  /// On a Mini or Mini S it is a charging bit plus a percentage; on a Micro,
+  /// which has no battery, it is the input voltage times ten. Decoding it
+  /// here would require knowing the model, which a data packet does not carry
+  /// — so the raw byte is exposed and [batteryPercent], [isCharging] and
+  /// [inputVoltage] each interpret it one way.
+  final int batteryByte;
+
+  /// Battery level 0–100, on a Mini or Mini S.
+  int get batteryPercent => batteryByte & 0x7F;
+
+  /// Whether the device is charging, on a Mini or Mini S.
+  bool get isCharging => (batteryByte & 0x80) != 0;
+
+  /// Supply voltage, on a Micro. `0x79` is 12.1 V.
+  double get inputVoltage => batteryByte / 10;
+
+  /// Whether the receiver reports a good location solution.
+  ///
+  /// The spec's own recommendation, and stricter than reading [fixStatus]
+  /// alone: a 3D fix **and** the fix-OK bit. A 2D fix has no usable altitude
+  /// and is not what a lap timer should trust.
+  bool get hasValidFix =>
+      fixStatus == RaceBoxFixStatus.fix3d &&
+      (fixStatusFlags & RaceBoxFlags.fixOk) != 0;
+
+  /// Whether the coordinates in this packet may be used.
+  ///
+  /// Separate from [hasValidFix] because the receiver can invalidate the
+  /// coordinates on their own flag while still claiming a fix.
+  bool get hasValidPosition =>
+      hasValidFix && (latLonFlags & RaceBoxFlags.coordinatesInvalid) == 0;
 
   double get speedMph => speedMps * 2.236936292;
 

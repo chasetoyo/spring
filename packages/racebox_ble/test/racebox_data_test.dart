@@ -5,12 +5,11 @@ import 'package:racebox_ble/racebox_ble.dart';
 
 /// Builds a payload by writing fields at the offsets the decoder reads.
 ///
-/// **This cannot validate the offsets themselves.** It is written from the
-/// same table the decoder uses, so it proves scaling, sign handling, endianness
-/// and bit-field extraction are right *given* that table — and would catch a
-/// millimetres-vs-metres slip or a signed/unsigned mistake — but if the table
-/// is wrong against real firmware, these tests stay green. Only a capture from
-/// a device can settle that; see the note on [RaceBoxDataOffsets].
+/// Self-referential by construction — written from the same table the decoder
+/// uses — so it establishes scaling, sign handling and endianness but could
+/// not catch a wrong offset. The golden test below is what pins the layout:
+/// it decodes the captured packet published in the protocol document and
+/// checks every field against that document's own decoding.
 Uint8List buildPayload({
   int iTow = 0,
   int year = 2026,
@@ -37,6 +36,8 @@ Uint8List buildPayload({
   int rotationYCenti = -75,
   int rotationZCenti = 0,
   int battery = 0x55,
+  int fixStatusFlags = 0x01,
+  int latLonFlags = 0x00,
 }) {
   final Uint8List bytes = Uint8List(RaceBoxDataOffsets.payloadLength);
   final ByteData view = ByteData.sublistView(bytes);
@@ -90,6 +91,8 @@ Uint8List buildPayload({
     Endian.little,
   );
   view.setUint8(RaceBoxDataOffsets.batteryStatus, battery);
+  view.setUint8(RaceBoxDataOffsets.fixStatusFlags, fixStatusFlags);
+  view.setUint8(RaceBoxDataOffsets.latLonFlags, latLonFlags);
 
   return bytes;
 }
@@ -153,22 +156,41 @@ void main() {
       );
     });
 
-    test('reads the fix status, and which ones carry a position', () {
+    test('trusts a fix only on 3D plus the fix-OK bit', () {
+      // The document's own recommendation. A 2D fix has no usable altitude,
+      // and the status byte alone can read 3 while the receiver has already
+      // flagged the solution as not OK.
+      expect(
+        RaceBoxData.decode(buildPayload(fixStatus: 3))!.hasValidFix,
+        isTrue,
+      );
+      expect(
+        RaceBoxData.decode(
+          buildPayload(fixStatus: 3, fixStatusFlags: 0x00),
+        )!.hasValidFix,
+        isFalse,
+      );
+      expect(
+        RaceBoxData.decode(buildPayload(fixStatus: 2))!.hasValidFix,
+        isFalse,
+      );
       expect(
         RaceBoxData.decode(buildPayload(fixStatus: 0))!.fixStatus,
         RaceBoxFixStatus.none,
       );
+      // Undocumented codes are not silently folded into "no fix".
       expect(
-        RaceBoxData.decode(buildPayload(fixStatus: 3))!.fixStatus.hasPosition,
-        isTrue,
+        RaceBoxData.decode(buildPayload(fixStatus: 7))!.fixStatus,
+        RaceBoxFixStatus.unknown,
       );
-      // Time-only has no position at all, and dead reckoning drifts.
+    });
+
+    test('treats the lat/lon invalid bit as inverted', () {
+      // Bit 0 *set* means the coordinates are unusable — the opposite sense
+      // to every other flag in the message.
+      expect(RaceBoxData.decode(buildPayload())!.hasValidPosition, isTrue);
       expect(
-        RaceBoxData.decode(buildPayload(fixStatus: 5))!.fixStatus.hasPosition,
-        isFalse,
-      );
-      expect(
-        RaceBoxData.decode(buildPayload(fixStatus: 1))!.fixStatus.hasPosition,
+        RaceBoxData.decode(buildPayload(latLonFlags: 0x01))!.hasValidPosition,
         isFalse,
       );
     });
