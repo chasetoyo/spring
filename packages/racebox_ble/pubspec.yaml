@@ -1,0 +1,22 @@
+name: racebox_ble
+description: RaceBox Mini/Micro GNSS data logger client, over the shared ble_core BLE layer.
+version: 0.1.0
+publish_to: none
+
+environment:
+  sdk: ^3.8.1
+  flutter: ">=1.17.0"
+resolution: workspace
+
+dependencies:
+  flutter:
+    sdk: flutter
+  ble_core:
+    path: ../ble_core
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^5.0.0
+
+flutter:

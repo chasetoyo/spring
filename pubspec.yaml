@@ -9,6 +9,7 @@ workspace:
   - packages/elm327_obd
   - packages/elm327_obd_vehicle_pids
   - packages/elm327_obd_bluetooth
+  - packages/racebox_ble
   - apps/elm327_demo
 
 dev_dependencies:
