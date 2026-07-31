@@ -42,6 +42,13 @@ abstract interface class BleBackend {
   /// failure from whichever BLE call happened next.
   Future<BleAvailability> requestPermissions();
 
+  /// Opens this app's entry in system settings.
+  ///
+  /// The only way out of [BleAvailability.deniedForever], since neither
+  /// platform will show a permission prompt again once it has been refused
+  /// for good. Also where a user has to go to clear a bond on iOS.
+  Future<void> openAppSettings();
+
   /// Devices matching [profile], streamed as they are discovered.
   ///
   /// Filtering is part of the contract, not an optional extra: an unfiltered

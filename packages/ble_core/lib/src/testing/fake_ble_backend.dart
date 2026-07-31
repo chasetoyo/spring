@@ -110,6 +110,7 @@ class FakeBleBackend implements BleBackend {
 
   int scanCount = 0;
   int stopScanCount = 0;
+  int openAppSettingsCount = 0;
   bool disposed = false;
 
   @override
@@ -118,6 +119,9 @@ class FakeBleBackend implements BleBackend {
   @override
   Future<BleAvailability> requestPermissions() async =>
       requestResult ?? availabilityResult;
+
+  @override
+  Future<void> openAppSettings() async => openAppSettingsCount++;
 
   @override
   Stream<BleDevice> scan({

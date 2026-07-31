@@ -3,7 +3,10 @@ import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:flutter_blue_plus/flutter_blue_plus.dart';
-import 'package:permission_handler/permission_handler.dart';
+// Prefixed because permission_handler's `openAppSettings` is a bare top-level
+// function that would otherwise be shadowed by this class's method of the
+// same name, turning the call into unbounded recursion.
+import 'package:permission_handler/permission_handler.dart' as permissions;
 
 import 'ble_backend.dart';
 import 'ble_connection.dart';
@@ -58,6 +61,9 @@ class FlutterBluePlusBackend implements BleBackend {
     return BleAvailability.ready;
   }
 
+  @override
+  Future<void> openAppSettings() => permissions.openAppSettings();
+
   /// Resolves the platform's BLE permissions into a [BleAvailability].
   ///
   /// iOS surfaces Bluetooth permission through the adapter state rather than
@@ -68,18 +74,18 @@ class FlutterBluePlusBackend implements BleBackend {
     // `bluetoothScan`/`bluetoothConnect` are the Android 12+ permissions;
     // `locationWhenInUse` covers API 30, where a BLE scan is still gated on
     // location access. Orion's minSdk is 30, so both paths are live.
-    const List<Permission> required = <Permission>[
-      Permission.bluetoothScan,
-      Permission.bluetoothConnect,
-      Permission.locationWhenInUse,
+    const List<permissions.Permission> required = <permissions.Permission>[
+      permissions.Permission.bluetoothScan,
+      permissions.Permission.bluetoothConnect,
+      permissions.Permission.locationWhenInUse,
     ];
 
-    Map<Permission, PermissionStatus> statuses;
+    Map<permissions.Permission, permissions.PermissionStatus> statuses;
     if (prompt) {
       statuses = await required.request();
     } else {
-      statuses = <Permission, PermissionStatus>{
-        for (final Permission permission in required)
+      statuses = <permissions.Permission, permissions.PermissionStatus>{
+        for (final permissions.Permission permission in required)
           permission: await permission.status,
       };
     }
@@ -87,10 +93,12 @@ class FlutterBluePlusBackend implements BleBackend {
     // Permanently denied wins over plain denied: it is the one that cannot be
     // resolved by asking again, and reporting it as `denied` would leave the
     // UI offering a prompt the system will never show.
-    if (statuses.values.any((PermissionStatus s) => s.isPermanentlyDenied)) {
+    if (statuses.values.any(
+      (permissions.PermissionStatus s) => s.isPermanentlyDenied,
+    )) {
       return BleAvailability.deniedForever;
     }
-    if (statuses.values.any((PermissionStatus s) => !s.isGranted)) {
+    if (statuses.values.any((permissions.PermissionStatus s) => !s.isGranted)) {
       return BleAvailability.denied;
     }
     return BleAvailability.ready;
