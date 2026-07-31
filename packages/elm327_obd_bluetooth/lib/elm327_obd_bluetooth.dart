@@ -7,5 +7,9 @@
 library;
 
 export 'package:ble_core/ble_core.dart';
+// The OBD conversation itself, which this package only transports.
+// [Elm327BleClient.client] hands one back, so a consumer that never imported
+// `elm327_obd` directly could not name the type it was given.
+export 'package:elm327_obd/elm327_obd.dart';
 
 export 'src/bluetooth_transport.dart';
