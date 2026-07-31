@@ -12,4 +12,6 @@ export 'src/response.dart';
 export 'src/dtc.dart';
 export 'src/pid.dart';
 export 'src/custom_pid.dart';
+export 'src/pid_definition.dart';
+export 'src/pid_poller.dart';
 export 'src/client.dart';
