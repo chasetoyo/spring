@@ -23,9 +23,7 @@ class FakeElm327Transport implements Elm327Transport {
 
   @override
   Future<void> write(List<int> bytes) async {
-    final command = String.fromCharCodes(
-      bytes.where((byte) => byte != 0x0D),
-    );
+    final command = String.fromCharCodes(bytes.where((byte) => byte != 0x0D));
     sentCommands.add(command);
     final response = scriptedResponses[command] ?? '';
     final payload = <int>[...response.codeUnits, 0x0D, 0x3E];

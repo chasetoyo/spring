@@ -5,6 +5,7 @@ environment:
   sdk: ^3.8.0
 
 workspace:
+  - packages/ble_core
   - packages/elm327_obd
   - packages/elm327_obd_vehicle_pids
   - packages/elm327_obd_bluetooth

@@ -25,13 +25,7 @@ void main() {
 
   test('connect runs the default init sequence in order', () async {
     await connectedClient({});
-    expect(transport.sentCommands, [
-      'ATZ',
-      'ATE0',
-      'ATL0',
-      'ATH0',
-      'ATSP0',
-    ]);
+    expect(transport.sentCommands, ['ATZ', 'ATE0', 'ATL0', 'ATH0', 'ATSP0']);
   });
 
   test('queryPid sends the request and decodes the response', () async {
@@ -48,21 +42,22 @@ void main() {
   });
 
   test('readDtcs decodes the mode 03 datasheet example', () async {
-    final client = await connectedClient({
-      '03': '43 01 33 00 00 00 00',
-    });
+    final client = await connectedClient({'03': '43 01 33 00 00 00 00'});
     expect(await client.readDtcs(), ['P0133']);
   });
 
-  test('clearDtcs sends mode 04 and does not throw on a plain OK/44 reply', () async {
-    final client = await connectedClient({
-      '04': '44',
-      'ATDPN': '0',
-      'ATDP': 'AUTO',
-    });
-    await client.clearDtcs();
-    expect(transport.sentCommands, contains('04'));
-  });
+  test(
+    'clearDtcs sends mode 04 and does not throw on a plain OK/44 reply',
+    () async {
+      final client = await connectedClient({
+        '04': '44',
+        'ATDPN': '0',
+        'ATDP': 'AUTO',
+      });
+      await client.clearDtcs();
+      expect(transport.sentCommands, contains('04'));
+    },
+  );
 
   test('readVin reassembles the multiline datasheet example', () async {
     final client = await connectedClient({

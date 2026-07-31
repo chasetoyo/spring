@@ -27,10 +27,7 @@ String? decodeDtc(int highByte, int lowByte) {
   if (highByte == 0 && lowByte == 0) return null;
   final firstNibble = (highByte >> 4) & 0xF;
   final secondDigit = (highByte & 0xF).toRadixString(16).toUpperCase();
-  final lastTwoDigits = lowByte.toRadixString(16).toUpperCase().padLeft(
-    2,
-    '0',
-  );
+  final lastTwoDigits = lowByte.toRadixString(16).toUpperCase().padLeft(2, '0');
   return '${_dtcPrefixes[firstNibble]}$secondDigit$lastTwoDigits';
 }
 

@@ -18,9 +18,7 @@ void main() {
   });
 
   test('returns one frame per line for a multi-ECU reply', () {
-    final response = parseObdResponse(
-      '41 00 BE 3E B8 11\r41 00 80 10 80 00',
-    );
+    final response = parseObdResponse('41 00 BE 3E B8 11\r41 00 80 10 80 00');
     expect(response.frames, [
       [0x41, 0x00, 0xBE, 0x3E, 0xB8, 0x11],
       [0x41, 0x00, 0x80, 0x10, 0x80, 0x00],

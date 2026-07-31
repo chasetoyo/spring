@@ -70,10 +70,9 @@ bool isErrorResponse(String raw) => _nonEmptyLines(raw).any(_isErrorLine);
 /// some exception, falling back to the generic [Elm327Exception] if no
 /// specific error line is recognized.
 Elm327Exception mapErrorResponse(String raw) {
-  final errorLine = _nonEmptyLines(raw).firstWhere(
-    _isErrorLine,
-    orElse: () => raw.trim(),
-  );
+  final errorLine = _nonEmptyLines(
+    raw,
+  ).firstWhere(_isErrorLine, orElse: () => raw.trim());
 
   if (errorLine == '?') {
     return Elm327CommandException('Unrecognized command: $raw');

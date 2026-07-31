@@ -13,10 +13,17 @@ and status summary.
 
 | Package | Type | Purpose |
 |---|---|---|
+| [`packages/ble_core`](packages/ble_core) | Flutter | Vendor-neutral BLE plumbing: scanning, permissions, connections and device profiles, shared by every device family |
 | [`packages/elm327_obd`](packages/elm327_obd) | Pure Dart | AT-command/OBD-II protocol core: no Flutter or Bluetooth dependency |
 | [`packages/elm327_obd_vehicle_pids`](packages/elm327_obd_vehicle_pids) | Pure Dart | Manufacturer-specific custom PID catalogs (Subaru, with more to come) |
-| [`packages/elm327_obd_bluetooth`](packages/elm327_obd_bluetooth) | Flutter | Bluetooth Low Energy (BLE) transport implementing the core's transport interface |
+| [`packages/elm327_obd_bluetooth`](packages/elm327_obd_bluetooth) | Flutter | Binds the OBD-II core to a `ble_core` link, plus the ELM327 GATT profile |
 | [`apps/elm327_demo`](apps/elm327_demo) | Flutter app | Device picker, live dashboard, and raw AT/OBD terminal for end-to-end verification |
+
+`ble_core` is where a second device family plugs in. It owns no protocol: a
+family supplies a `DeviceProfile` describing its GATT shape and a client that
+interprets the bytes, and gets scanning, filtering, permissions, MTU
+negotiation and connection-state tracking for free. `package:ble_core/testing.dart`
+ships a `FakeBleBackend` so those clients can be tested without hardware.
 
 ## Getting started
 
@@ -25,7 +32,7 @@ dart pub global activate melos
 flutter pub get   # resolves the whole workspace (Dart pub workspaces) - use
                   # flutter, not dart, since some member packages need the
                   # Flutter SDK constraint
-melos list        # confirm all four packages are recognized
+melos list        # confirm all five packages are recognized
 ```
 
 See **[`docs/commands.md`](docs/commands.md)** for the full command
