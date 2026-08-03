@@ -54,9 +54,7 @@ ObdResponse parseObdResponse(String raw) {
       segments[sequence] = _hexBytes(match.group(2)!);
     }
     final orderedKeys = segments.keys.toList()..sort();
-    final merged = <int>[
-      for (final key in orderedKeys) ...segments[key]!,
-    ];
+    final merged = <int>[for (final key in orderedKeys) ...segments[key]!];
     return ObdResponse([merged]);
   }
 

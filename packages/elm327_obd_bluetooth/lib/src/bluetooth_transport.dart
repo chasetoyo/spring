@@ -1,128 +1,124 @@
 import 'dart:async';
 
+import 'package:ble_core/ble_core.dart';
 import 'package:elm327_obd/elm327_obd.dart';
-import 'package:flutter_blue_plus/flutter_blue_plus.dart';
-import 'package:permission_handler/permission_handler.dart';
 
-/// An [Elm327Transport] over a Bluetooth Low Energy (BLE) connection to an
-/// ELM327 adapter. Contains no AT/OBD knowledge — it only moves bytes,
-/// stripping stray NULL (0x00) bytes the datasheet notes the ELM327 can
-/// occasionally emit.
+/// The GATT profile of a BLE serial-bridge OBD-II adapter.
 ///
-/// Many budget BLE-serial OBD-II adapters (including some Veepeak
-/// OBDCheck BLE/BLE+ units) expose a generic "HM-10 style" UART-over-BLE
-/// GATT profile: service `FFF0`, a writable characteristic `FFF1`, and a
-/// notifying characteristic `FFF2`. [defaultServiceUuid]/
-/// [defaultWriteCharacteristicUuid]/[defaultNotifyCharacteristicUuid]
-/// default to that pattern, but **this is commonly-referenced, not
-/// verified against a specific Veepeak firmware revision** — if `connect`
-/// fails to find these UUIDs on your adapter, inspect its actual GATT
-/// profile (e.g. with a generic BLE scanner app) and pass the real ones.
+/// Many budget adapters — including some Veepeak OBDCheck BLE/BLE+ units —
+/// expose a generic "HM-10 style" UART-over-BLE profile: service `FFF0`, a
+/// writable characteristic `FFF1`, and a notifying characteristic `FFF2`.
+///
+/// **This is commonly-referenced, not verified against a specific Veepeak
+/// firmware revision.** If [BleBackend.connect] throws [BleProfileException]
+/// for your adapter, inspect its actual GATT profile with a BLE scanner and
+/// construct a [DeviceProfile] with the real UUIDs.
+///
+/// No name filter: these adapters advertise under a wide range of names
+/// (`OBDII`, `Veepeak`, `V-LINK`, and worse), so a pattern would reject more
+/// real devices than it filtered junk. The service UUID does the work.
+const DeviceProfile elm327Profile = DeviceProfile(
+  name: 'ELM327',
+  serviceUuid: 'fff0',
+  writeCharacteristicUuid: 'fff1',
+  notifyCharacteristicUuid: 'fff2',
+);
+
+/// Adapts a [BleConnection] to the byte channel `elm327_obd` expects.
+///
+/// Nothing but a shim now. It used to own scanning, permissions, connecting
+/// and characteristic discovery as statics — all of which moved to
+/// [BleBackend], where a second device family can reach them and a test can
+/// replace them.
+///
+/// It also used to strip `0x00` bytes here, which was both redundant — the
+/// ELM327 framer in `elm327_obd` already skips them — and actively harmful
+/// once a binary device family shares this plumbing, since UBX packets are
+/// full of legitimate NUL bytes.
 class BleElm327Transport implements Elm327Transport {
-  BleElm327Transport._(this._device, this._writeCharacteristic);
+  BleElm327Transport(this._connection);
 
-  static const defaultServiceUuid = 'fff0';
-  static const defaultWriteCharacteristicUuid = 'fff1';
-  static const defaultNotifyCharacteristicUuid = 'fff2';
+  final BleConnection _connection;
 
-  final BluetoothDevice _device;
-  final BluetoothCharacteristic _writeCharacteristic;
-  final _inputController = StreamController<List<int>>.broadcast();
-  StreamSubscription<List<int>>? _notifySubscription;
+  @override
+  Stream<List<int>> get input => _connection.input;
 
-  /// Requests the runtime permissions Android needs before scanning for
-  /// or connecting to a BLE device (scan/connect on Android 12+, location
-  /// on older Android versions that tie BLE discovery to location
-  /// access). A no-op on platforms that don't require it.
-  static Future<void> _ensurePermissions() async {
-    await [
-      Permission.bluetoothScan,
-      Permission.bluetoothConnect,
-      Permission.locationWhenInUse,
-    ].request();
-  }
+  @override
+  Future<void> write(List<int> bytes) => _connection.write(bytes);
+}
 
-  /// Starts a BLE scan and streams devices as they're discovered, for a
-  /// device-picker UI to show live and let the user tap one to connect.
-  /// BLE serial-bridge adapters like this typically don't need OS-level
-  /// pairing first — unlike Bluetooth Classic, a scan result is enough.
-  static Stream<ScanResult> scan({
-    Duration timeout = const Duration(seconds: 10),
-  }) async* {
-    await _ensurePermissions();
-    await FlutterBluePlus.startScan(timeout: timeout);
-    yield* FlutterBluePlus.onScanResults
-        .expand((results) => results)
-        .distinct((a, b) => a.device.remoteId == b.device.remoteId);
-  }
+/// An ELM327 adapter reached over BLE, as a [BleDeviceClient].
+///
+/// Wraps rather than extends [Elm327Client] because `elm327_obd` is a pure
+/// Dart package with no Flutter dependency — it is unit-tested with
+/// `package:test` against a fake transport, and making it implement an
+/// interface from the Flutter-dependent `ble_core` would cost that.
+class Elm327BleClient implements BleDeviceClient {
+  Elm327BleClient({
+    required BleBackend backend,
+    required String deviceId,
+    DeviceProfile profile = elm327Profile,
+  }) : _backend = backend,
+       _deviceId = deviceId,
+       _profile = profile;
 
-  /// Stops an in-progress scan started by [scan].
-  static Future<void> stopScan() => FlutterBluePlus.stopScan();
+  final BleBackend _backend;
+  final String _deviceId;
+  final DeviceProfile _profile;
 
-  /// Connects to [device] and locates its write/notify characteristics,
-  /// defaulting to the common FFF0/FFF1/FFF2 pattern (see the class doc
-  /// comment) — override the UUID parameters for adapters that differ.
-  static Future<BleElm327Transport> connect(
-    BluetoothDevice device, {
-    String serviceUuid = defaultServiceUuid,
-    String writeCharacteristicUuid = defaultWriteCharacteristicUuid,
-    String notifyCharacteristicUuid = defaultNotifyCharacteristicUuid,
-  }) async {
-    await _ensurePermissions();
-    // flutter_blue_plus is dual-licensed; `nonprofit` covers personal use
-    // per its LICENSE. Revisit if this app is ever used commercially.
-    await device.connect(license: License.nonprofit);
-    final services = await device.discoverServices();
-    final service = services.firstWhere(
-      (s) => s.uuid == Guid(serviceUuid),
-      orElse: () => throw Elm327TransportException(
-        'BLE service $serviceUuid not found on ${device.remoteId.str}',
-      ),
+  final StreamController<BleConnectionState> _state =
+      StreamController<BleConnectionState>.broadcast();
+
+  BleConnection? _connection;
+  StreamSubscription<BleConnectionState>? _stateSubscription;
+  Elm327Client? _client;
+
+  /// The OBD-II client, available once [connect] has completed.
+  ///
+  /// Null before connecting and after disconnecting, so a caller cannot hold
+  /// a stale client across a reconnect and send commands into a dead link.
+  Elm327Client? get client => _client;
+
+  @override
+  Stream<BleConnectionState> get connectionState => _state.stream;
+
+  @override
+  bool get isConnected => _connection?.currentState.isConnected ?? false;
+
+  @override
+  Future<void> connect() async {
+    if (_connection != null) return;
+
+    _state.add(BleConnectionState.connecting);
+    final BleConnection connection = await _backend.connect(
+      _deviceId,
+      _profile,
     );
-    final writeCharacteristic = service.characteristics.firstWhere(
-      (c) => c.uuid == Guid(writeCharacteristicUuid),
-      orElse: () => throw Elm327TransportException(
-        'BLE write characteristic $writeCharacteristicUuid not found in '
-        'service $serviceUuid on ${device.remoteId.str}',
-      ),
-    );
-    final notifyCharacteristic = service.characteristics.firstWhere(
-      (c) => c.uuid == Guid(notifyCharacteristicUuid),
-      orElse: () => throw Elm327TransportException(
-        'BLE notify characteristic $notifyCharacteristicUuid not found in '
-        'service $serviceUuid on ${device.remoteId.str}',
-      ),
-    );
+    _connection = connection;
+    _stateSubscription = connection.state.listen(_state.add);
 
-    final transport = BleElm327Transport._(device, writeCharacteristic);
-    transport._notifySubscription = notifyCharacteristic.onValueReceived
-        .listen(transport._onRawData);
-    await notifyCharacteristic.setNotifyValue(true);
-    return transport;
-  }
-
-  void _onRawData(List<int> chunk) {
-    _inputController.add(chunk.where((byte) => byte != 0x00).toList());
+    final Elm327Client client = Elm327Client(BleElm327Transport(connection));
+    _client = client;
+    // The AT init sequence, deliberately after the link is up rather than
+    // folded into it: "the radio link is open" and "the adapter session is
+    // configured" are different facts, and a RaceBox has only the first.
+    await client.connect();
   }
 
   @override
-  Stream<List<int>> get input => _inputController.stream;
-
-  @override
-  Future<void> write(List<int> bytes) async {
-    final sendWithoutResponse =
-        _writeCharacteristic.properties.writeWithoutResponse &&
-        !_writeCharacteristic.properties.write;
-    await _writeCharacteristic.write(
-      bytes,
-      withoutResponse: sendWithoutResponse,
-    );
-  }
-
-  /// Disconnects from the device and closes the input stream.
   Future<void> disconnect() async {
-    await _notifySubscription?.cancel();
-    await _device.disconnect();
-    await _inputController.close();
+    await _stateSubscription?.cancel();
+    _stateSubscription = null;
+    await _client?.dispose();
+    _client = null;
+    await _connection?.disconnect();
+    _connection = null;
+    if (!_state.isClosed) _state.add(BleConnectionState.disconnected);
+  }
+
+  @override
+  Future<void> dispose() async {
+    await disconnect();
+    await _state.close();
   }
 }

@@ -218,9 +218,8 @@ class Elm327Client {
   Future<String> readVin() async {
     final raw = await _sendObdCommand('0902');
     final frame = parseObdResponse(raw).firstFrame;
-    final dataStart = (frame.length >= 3 && frame[0] == 0x49 && frame[1] == 0x02)
-        ? 3
-        : 0;
+    final dataStart =
+        (frame.length >= 3 && frame[0] == 0x49 && frame[1] == 0x02) ? 3 : 0;
     return frame
         .sublist(dataStart)
         .where((byte) => byte != 0)

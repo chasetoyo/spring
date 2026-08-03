@@ -11,10 +11,10 @@ resolution: workspace
 dependencies:
   flutter:
     sdk: flutter
+  ble_core:
+    path: ../ble_core
   elm327_obd:
     path: ../elm327_obd
-  flutter_blue_plus: ^2.3.10
-  permission_handler: ^12.0.3
 
 dev_dependencies:
   flutter_test:

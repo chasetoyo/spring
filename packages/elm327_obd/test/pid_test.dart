@@ -2,11 +2,14 @@ import 'package:elm327_obd/elm327_obd.dart';
 import 'package:test/test.dart';
 
 void main() {
-  test('engineRpm builds the right request and decodes per the datasheet example', () {
-    expect(StandardPids.engineRpm.requestHex, '010C');
-    // datasheet: 41 0C 1A F8 -> (0x1AF8) / 4 = 1726 rpm
-    expect(StandardPids.engineRpm.decode([0x1A, 0xF8]), 1726);
-  });
+  test(
+    'engineRpm builds the right request and decodes per the datasheet example',
+    () {
+      expect(StandardPids.engineRpm.requestHex, '010C');
+      // datasheet: 41 0C 1A F8 -> (0x1AF8) / 4 = 1726 rpm
+      expect(StandardPids.engineRpm.decode([0x1A, 0xF8]), 1726);
+    },
+  );
 
   test('coolantTemp decodes per the datasheet example', () {
     expect(StandardPids.coolantTemp.requestHex, '0105');

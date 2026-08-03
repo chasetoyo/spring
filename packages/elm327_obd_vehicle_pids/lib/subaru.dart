@@ -8,15 +8,24 @@ import 'package:elm327_obd/elm327_obd.dart';
 /// OBD. Byte offsets and scaling can vary by model year and ECU
 /// calibration — verify against your specific vehicle before relying
 /// on these for anything beyond experimentation.
-final subaruPids = PidSet('Subaru', [
-  CustomPid(
+///
+/// Declared as [PidDefinition]s rather than [CustomPid]s so an app can offer
+/// them in a picker and store the choice: a [CustomPid] carries a decoder
+/// closure, which does not survive being written to disk.
+const List<PidDefinition> subaruPidDefinitions = <PidDefinition>[
+  PidDefinition(
     name: 'Manifold Relative Pressure',
-    mode: 0x22,
-    pidBytes: [0x11, 0x01],
     unit: 'psi',
+    mode: 0x22,
+    pidBytes: <int>[0x11, 0x01],
     // Commonly published scaling: raw byte / 10 = psi relative to
     // atmospheric.
-    decode: (bytes) => bytes[0] / 10,
-    targetHeader: '7E0',
+    scale: 0.1,
+    header: '7E0',
   ),
+];
+
+/// The same catalog in the form [Elm327Client.queryCustomPid] takes directly.
+final subaruPids = PidSet('Subaru', <CustomPid>[
+  for (final definition in subaruPidDefinitions) definition.toCustomPid(),
 ]);

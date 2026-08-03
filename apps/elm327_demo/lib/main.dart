@@ -1,4 +1,3 @@
-import 'package:elm327_obd/elm327_obd.dart';
 import 'package:elm327_obd_bluetooth/elm327_obd_bluetooth.dart';
 import 'package:flutter/material.dart';
 
@@ -14,10 +13,7 @@ class Elm327DemoApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return MaterialApp(
-      title: 'ELM327 Demo',
-      home: _RootScreen(),
-    );
+    return MaterialApp(title: 'ELM327 Demo', home: _RootScreen());
   }
 }
 
@@ -27,27 +23,23 @@ class _RootScreen extends StatefulWidget {
 }
 
 class _RootScreenState extends State<_RootScreen> {
-  Elm327Client? _client;
-  BleElm327Transport? _transport;
+  final BleBackend _backend = FlutterBluePlusBackend();
+  Elm327BleClient? _client;
 
   @override
   void dispose() {
     _client?.dispose();
-    _transport?.disconnect();
+    _backend.dispose();
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
-    final client = _client;
+    final client = _client?.client;
     if (client == null) {
       return DevicePickerScreen(
-        onConnected: (client, transport) {
-          setState(() {
-            _client = client;
-            _transport = transport;
-          });
-        },
+        backend: _backend,
+        onConnected: (connected) => setState(() => _client = connected),
       );
     }
     return ConnectedHomeScreen(client: client);
