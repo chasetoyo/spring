@@ -108,30 +108,97 @@ class FlutterBluePlusBackend implements BleBackend {
   Stream<BleDevice> scan({
     DeviceProfile? profile,
     Duration timeout = const Duration(seconds: 10),
-  }) async* {
-    final BleAvailability state = await requestPermissions();
-    if (!state.isReady) {
-      throw BleUnavailableException('Bluetooth unavailable: ${state.name}');
-    }
-
-    await FlutterBluePlus.startScan(timeout: timeout);
+  }) {
+    // Deliberately a hand-driven controller rather than an `async*` generator
+    // reading `FlutterBluePlus.onScanResults`, which this used to be. That
+    // stream is a process-wide re-emitting controller that is **never closed**,
+    // so an `await for` over it does not end when the scan window does. Two
+    // things broke as a result, and both were visible in the app:
+    //
+    // * the caller never learned the scan had finished, so a picker sat on
+    //   "Scanning…" forever with no way to tell a live scan from a dead one;
+    // * cancelling the subscription deadlocked. An `async*` body can only
+    //   honour a cancellation when it next resumes, and once the window has
+    //   closed no further advertisement is coming — so `cancel()` never
+    //   completed, and every caller that cancels before connecting (which is
+    //   every one of them, since a scan and a connect must not overlap) hung
+    //   on that await and appeared to ignore the tap entirely.
+    //
+    // Driving the controller by hand lets the window closing end the stream
+    // and lets a cancellation take effect on the spot.
+    final StreamController<BleDevice> controller =
+        StreamController<BleDevice>();
     final Set<String> seen = <String>{};
-    try {
-      await for (final List<ScanResult> results
-          in FlutterBluePlus.onScanResults) {
-        for (final ScanResult result in results) {
-          final BleDevice device = _toBleDevice(result);
-          if (profile != null && !profile.matches(device)) continue;
-          // Dedup by id rather than `.distinct()`: consecutive-only
-          // comparison lets a device reappear every time another one is seen
-          // between its advertisements, which is most of them.
-          if (!seen.add(device.id)) continue;
-          yield device;
-        }
-      }
-    } finally {
+    StreamSubscription<List<ScanResult>>? results;
+    StreamSubscription<bool>? scanning;
+    // Not `controller.isClosed`: a cancellation does not close the controller,
+    // and permission prompts make the setup below long enough to be cancelled
+    // half way through. Without this flag that leaves a scan running with
+    // nothing left to stop it.
+    bool released = false;
+
+    Future<void> release() async {
+      released = true;
+      await results?.cancel();
+      results = null;
+      await scanning?.cancel();
+      scanning = null;
       await stopScan();
     }
+
+    controller
+      ..onListen = () async {
+        try {
+          final BleAvailability state = await requestPermissions();
+          if (!state.isReady) {
+            throw BleUnavailableException(
+              'Bluetooth unavailable: ${state.name}',
+            );
+          }
+          if (released || controller.isClosed) return;
+
+          await FlutterBluePlus.startScan(timeout: timeout);
+          if (released || controller.isClosed) {
+            await stopScan();
+            return;
+          }
+
+          results = FlutterBluePlus.onScanResults.listen((
+            List<ScanResult> batch,
+          ) {
+            for (final ScanResult result in batch) {
+              final BleDevice device = _toBleDevice(result);
+              if (profile != null && !profile.matches(device)) continue;
+              // Dedup by id rather than `.distinct()`: consecutive-only
+              // comparison lets a device reappear every time another one is
+              // seen between its advertisements, which is most of them.
+              if (!seen.add(device.id)) continue;
+              if (released || controller.isClosed) return;
+              controller.add(device);
+            }
+          }, onError: controller.addError);
+
+          // The only signal that discovery is over. `isScanning` re-emits its
+          // latest value on listen, and the scan is already running by here, so
+          // the first event is `true` and the `false` that ends this stream is
+          // the timeout firing — or someone else calling `stopScan`, which is
+          // equally the end of our scan.
+          scanning = FlutterBluePlus.isScanning.listen((bool on) {
+            if (!on && !released && !controller.isClosed) {
+              unawaited(controller.close());
+            }
+          });
+        } catch (error, stackTrace) {
+          if (released || controller.isClosed) return;
+          controller.addError(error, stackTrace);
+          await controller.close();
+        }
+      }
+      // Reached both when the subscriber cancels and after `close` has
+      // delivered its done event, so the radio is released down either path.
+      ..onCancel = release;
+
+    return controller.stream;
   }
 
   @override
