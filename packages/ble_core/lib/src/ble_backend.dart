@@ -54,6 +54,12 @@ abstract interface class BleBackend {
   /// Filtering is part of the contract, not an optional extra: an unfiltered
   /// scan returns every BLE device in range, which is unusable in a picker
   /// once more than one device family is supported.
+  ///
+  /// **Ends when the scan window closes.** A caller may treat the done event
+  /// as "discovery is over" and say so, and may cancel the subscription at any
+  /// point to stop early — including after the window has closed, where the
+  /// cancellation must still complete promptly rather than waiting on an
+  /// advertisement that is no longer coming.
   Stream<BleDevice> scan({
     DeviceProfile? profile,
     Duration timeout = const Duration(seconds: 10),

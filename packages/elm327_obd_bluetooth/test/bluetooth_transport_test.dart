@@ -52,6 +52,63 @@ void main() {
     });
   });
 
+  group('veepeakProfile', () {
+    test('carries the same GATT shape as the generic profile', () {
+      expect(veepeakProfile.serviceUuid, elm327Profile.serviceUuid);
+      expect(
+        veepeakProfile.writeCharacteristicUuid,
+        elm327Profile.writeCharacteristicUuid,
+      );
+      expect(
+        veepeakProfile.notifyCharacteristicUuid,
+        elm327Profile.notifyCharacteristicUuid,
+      );
+    });
+
+    test('matches the names Veepeak actually advertises under', () {
+      for (final String name in <String>[
+        'VEEPEAK',
+        'Veepeak+',
+        'VEEPEAK OBD',
+        'veepeak mini',
+      ]) {
+        expect(
+          veepeakProfile.matches(
+            BleDevice(id: 'AA:BB:CC:DD:EE:FF', name: name, rssi: -60),
+          ),
+          isTrue,
+          reason: '$name should be recognised',
+        );
+      }
+    });
+
+    test('rejects a device that does not name itself Veepeak', () {
+      // The whole point of the filter: `fff0` is the stock HM-10 service and
+      // `matches` accepts a device advertising none at all, so without a name
+      // check the picker fills up with every module in range.
+      const BleDevice band = BleDevice(
+        id: 'AA:BB:CC:DD:EE:FF',
+        name: 'Some Fitness Band',
+        rssi: -60,
+      );
+      expect(veepeakProfile.matches(band), isFalse);
+
+      // Including one on the right service: `fff0` alone is not evidence.
+      const BleDevice generic = BleDevice(
+        id: '11:22:33:44:55:66',
+        name: 'OBDII',
+        rssi: -60,
+        serviceUuids: <String>['fff0'],
+      );
+      expect(veepeakProfile.matches(generic), isFalse);
+      expect(
+        elm327Profile.matches(generic),
+        isTrue,
+        reason: 'the generic profile still takes anything on fff0',
+      );
+    });
+  });
+
   group('Elm327BleClient', () {
     test('runs the AT init sequence over the link on connect', () async {
       final backend = FakeBleBackend();
