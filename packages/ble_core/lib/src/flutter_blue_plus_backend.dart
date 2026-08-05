@@ -12,6 +12,7 @@ import 'ble_backend.dart';
 import 'ble_connection.dart';
 import 'ble_device.dart';
 import 'ble_exception.dart';
+import 'ble_uuid.dart';
 import 'device_profile.dart';
 
 /// The `flutter_blue_plus` implementation of [BleBackend].
@@ -264,6 +265,7 @@ class FlutterBluePlusBackend implements BleBackend {
 
       final _FbpConnection connection = _FbpConnection(
         device: device,
+        services: services,
         writeCharacteristic: writeCharacteristic,
         notifyCharacteristic: notifyCharacteristic,
       );
@@ -329,30 +331,28 @@ class FlutterBluePlusBackend implements BleBackend {
   }
 }
 
-bool _uuidEquals(Guid guid, String uuid) {
-  final String left = guid.str.toLowerCase().replaceAll('-', '');
-  final String right = uuid.toLowerCase().replaceAll('-', '');
-  return _trimBase(left) == _trimBase(right);
-}
-
-String _trimBase(String uuid) {
-  if (uuid.length == 32 && uuid.endsWith('00001000800000805f9b34fb')) {
-    return uuid.substring(0, 8).replaceFirst(RegExp(r'^0+'), '');
-  }
-  return uuid.replaceFirst(RegExp(r'^0+'), '');
-}
+bool _uuidEquals(Guid guid, String uuid) => bleUuidEquals(guid.str, uuid);
 
 /// A live link, wrapping one `flutter_blue_plus` device.
 class _FbpConnection implements BleConnection {
   _FbpConnection({
     required BluetoothDevice device,
+    required List<BluetoothService> services,
     required BluetoothCharacteristic writeCharacteristic,
     required BluetoothCharacteristic notifyCharacteristic,
   }) : _device = device,
+       _services = services,
        _writeCharacteristic = writeCharacteristic,
        _notifyCharacteristic = notifyCharacteristic;
 
   final BluetoothDevice _device;
+
+  /// Everything discovery found, not only the profile's service.
+  ///
+  /// Kept from the connect rather than re-discovered per read: service
+  /// discovery is the slow part of opening a link, and a second pass while a
+  /// device is already streaming at 25 Hz is a stall no caller asked for.
+  final List<BluetoothService> _services;
   final BluetoothCharacteristic _writeCharacteristic;
   final BluetoothCharacteristic _notifyCharacteristic;
 
@@ -422,6 +422,36 @@ class _FbpConnection implements BleConnection {
         'Write to $deviceId failed: ${error.description ?? error.code}',
       );
     }
+  }
+
+  @override
+  Future<List<int>?> readCharacteristic({
+    required String serviceUuid,
+    required String characteristicUuid,
+  }) async {
+    if (!_currentState.isConnected) {
+      throw BleConnectionException('Link to $deviceId is not connected');
+    }
+
+    for (final BluetoothService service in _services) {
+      if (!_uuidEquals(service.uuid, serviceUuid)) continue;
+      for (final BluetoothCharacteristic characteristic
+          in service.characteristics) {
+        if (!_uuidEquals(characteristic.uuid, characteristicUuid)) continue;
+        // Present but not readable is the same answer as absent, and asking
+        // anyway earns a GATT error on some stacks and a hang on others.
+        if (!characteristic.properties.read) return null;
+        try {
+          return await characteristic.read();
+        } on FlutterBluePlusException catch (error) {
+          throw BleConnectionException(
+            'Read of $characteristicUuid on $deviceId failed: '
+            '${error.description ?? error.code}',
+          );
+        }
+      }
+    }
+    return null;
   }
 
   @override
