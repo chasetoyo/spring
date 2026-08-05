@@ -243,6 +243,7 @@ class FlutterBluePlusBackend implements BleBackend {
         'service ${profile.serviceUuid}',
         profile,
         deviceId,
+        services,
       );
       final BluetoothCharacteristic writeCharacteristic = _require(
         service.characteristics.where(
@@ -252,6 +253,7 @@ class FlutterBluePlusBackend implements BleBackend {
         'write characteristic ${profile.writeCharacteristicUuid}',
         profile,
         deviceId,
+        services,
       );
       final BluetoothCharacteristic notifyCharacteristic = _require(
         service.characteristics.where(
@@ -261,6 +263,7 @@ class FlutterBluePlusBackend implements BleBackend {
         'notify characteristic ${profile.notifyCharacteristicUuid}',
         profile,
         deviceId,
+        services,
       );
 
       final _FbpConnection connection = _FbpConnection(
@@ -301,11 +304,19 @@ class FlutterBluePlusBackend implements BleBackend {
     String what,
     DeviceProfile profile,
     String deviceId,
+    List<BluetoothService> discovered,
   ) {
     final Iterator<T> iterator = candidates.iterator;
     if (!iterator.moveNext()) {
+      // The GATT dump is the whole point of this message. A profile is a
+      // guess about hardware — `elm327Profile`'s FFF0/FFF1/FFF2 is documented
+      // as commonly-referenced rather than verified — and the only way to fix
+      // a wrong one is to know what the device actually carries. Without this
+      // the failure reaches a user as "that doesn't look like the device you
+      // picked" and reaches a developer as nothing at all.
       throw BleProfileException(
-        '${profile.name}: $what not found on $deviceId',
+        '${profile.name}: $what not found on $deviceId. '
+        'Device exposes: ${_describeGatt(discovered)}',
       );
     }
     return iterator.current;
@@ -332,6 +343,45 @@ class FlutterBluePlusBackend implements BleBackend {
 }
 
 bool _uuidEquals(Guid guid, String uuid) => bleUuidEquals(guid.str, uuid);
+
+/// Every service and characteristic a device carries, with the properties that
+/// decide whether a profile can use them.
+///
+/// Reads as `fff0[fff1:wW fff2:n]` — service, then its characteristics with
+/// `r`ead, `w`rite, `W`rite-without-response and `n`otify/indicate flags. Short
+/// on purpose: this goes in an exception message that has to survive being
+/// pasted out of a console, and a device carries a dozen of these.
+String _describeGatt(List<BluetoothService> services) {
+  if (services.isEmpty) {
+    // Distinct from a device with services we did not want. On Android this
+    // usually means discovery ran before the link settled.
+    return '(nothing discovered)';
+  }
+  return services
+      .map((BluetoothService service) {
+        final String characteristics = service.characteristics
+            .map(
+              (BluetoothCharacteristic c) =>
+                  '${_shortUuid(c.uuid)}:${_describeProperties(c.properties)}',
+            )
+            .join(' ');
+        return '${_shortUuid(service.uuid)}[$characteristics]';
+      })
+      .join(' ');
+}
+
+String _describeProperties(CharacteristicProperties p) {
+  final StringBuffer flags = StringBuffer();
+  if (p.read) flags.write('r');
+  if (p.write) flags.write('w');
+  if (p.writeWithoutResponse) flags.write('W');
+  if (p.notify || p.indicate) flags.write('n');
+  return flags.isEmpty ? '-' : flags.toString();
+}
+
+/// The distinguishing head of a UUID on the Bluetooth base, or the whole thing
+/// for a vendor UUID that carries no redundancy to trim.
+String _shortUuid(Guid uuid) => normalizeBleUuid(uuid.str);
 
 /// A live link, wrapping one `flutter_blue_plus` device.
 class _FbpConnection implements BleConnection {
