@@ -45,8 +45,12 @@ void main() {
       expect(data.iTowMs, 118286240);
     });
 
-    test('timestamp is 10 January 2022, 08:51:08 UTC', () {
-      expect(data.timestampUtc, DateTime.utc(2022, 1, 10, 8, 51, 8));
+    test('timestamp is 10 January 2022, 08:51:08.239972 UTC', () {
+      // The document prints the second fields as 08:51:08 and the Nanoseconds
+      // field as 239972000 separately. They are one instant, and the fraction
+      // is not decoration: it is what separates this packet from the other
+      // twenty-four in its second.
+      expect(data.timestampUtc, DateTime.utc(2022, 1, 10, 8, 51, 8, 239, 972));
     });
 
     test('fix is 3D and OK, on 11 satellites', () {

@@ -276,7 +276,8 @@ class RaceBoxData {
     // Before a fix the date fields read as zeroes or an epoch default, and a
     // timestamp from those is worse than none.
     if (year < 2000 || year > 2200) return null;
-    return DateTime.utc(
+
+    final DateTime whole = DateTime.utc(
       year,
       view.getUint8(RaceBoxDataOffsets.month),
       view.getUint8(RaceBoxDataOffsets.day),
@@ -284,6 +285,27 @@ class RaceBoxData {
       view.getUint8(RaceBoxDataOffsets.minute),
       view.getUint8(RaceBoxDataOffsets.second),
     );
+
+    // **The second fields alone are not a timestamp for a 25 Hz stream.** They
+    // name the second the fix belongs to; `nano` says where inside it, and
+    // without that every packet in a second decodes to the same instant. A
+    // consumer timing laps then cannot tell twenty-five distinct positions
+    // apart, and one that rejects non-advancing timestamps as duplicates
+    // throws twenty-four of them away.
+    //
+    // Signed, and genuinely negative in practice: the receiver rounds the
+    // second to nearest, so a fix just before a tick is reported as the next
+    // second minus a fraction.
+    final int nanos = view.getInt32(
+      RaceBoxDataOffsets.nanoseconds,
+      Endian.little,
+    );
+    // Documented range is ±1e9. Anything outside it is an unresolved clock
+    // rather than a fraction, and shifting the whole second by it would be
+    // worse than ignoring it.
+    if (nanos <= -1000000000 || nanos >= 1000000000) return whole;
+
+    return whole.add(Duration(microseconds: (nanos / 1000).round()));
   }
 
   @override

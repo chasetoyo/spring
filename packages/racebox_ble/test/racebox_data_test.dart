@@ -18,6 +18,7 @@ Uint8List buildPayload({
   int hour = 14,
   int minute = 30,
   int second = 15,
+  int nanoseconds = 0,
   int fixStatus = 3,
   int satellites = 12,
   int longitudeE7 = -1038917433,
@@ -49,6 +50,7 @@ Uint8List buildPayload({
   view.setUint8(RaceBoxDataOffsets.hour, hour);
   view.setUint8(RaceBoxDataOffsets.minute, minute);
   view.setUint8(RaceBoxDataOffsets.second, second);
+  view.setInt32(RaceBoxDataOffsets.nanoseconds, nanoseconds, Endian.little);
   view.setUint8(RaceBoxDataOffsets.fixStatus, fixStatus);
   view.setUint8(RaceBoxDataOffsets.numberOfSvs, satellites);
   view.setInt32(RaceBoxDataOffsets.longitude, longitudeE7, Endian.little);
@@ -199,6 +201,43 @@ void main() {
       final RaceBoxData data = RaceBoxData.decode(buildPayload())!;
       expect(data.timestampUtc, DateTime.utc(2026, 7, 31, 14, 30, 15));
       expect(data.timestampUtc!.isUtc, isTrue);
+    });
+
+    test('carries the sub-second fraction from the nanoseconds field', () {
+      // The whole point: at 25 Hz the second fields repeat and only this
+      // separates one packet from the next twenty-four.
+      final RaceBoxData data = RaceBoxData.decode(
+        buildPayload(nanoseconds: 440000000),
+      )!;
+      expect(data.timestampUtc, DateTime.utc(2026, 7, 31, 14, 30, 15, 440));
+    });
+
+    test('a negative fraction lands before the whole second', () {
+      // The receiver rounds to the nearest second, so a fix just short of the
+      // tick is reported as that tick minus a fraction.
+      final RaceBoxData data = RaceBoxData.decode(
+        buildPayload(nanoseconds: -40000000),
+      )!;
+      expect(data.timestampUtc, DateTime.utc(2026, 7, 31, 14, 30, 14, 960));
+    });
+
+    test('twenty-five packets in one second decode to distinct instants', () {
+      final Set<DateTime> instants = <DateTime>{
+        for (int i = 0; i < 25; i++)
+          RaceBoxData.decode(
+            buildPayload(nanoseconds: i * 40000000),
+          )!.timestampUtc!,
+      };
+
+      expect(instants, hasLength(25));
+    });
+
+    test('an out-of-range fraction is ignored rather than applied', () {
+      // Past ±1e9 this is an unresolved clock, not a fraction of a second.
+      expect(
+        RaceBoxData.decode(buildPayload(nanoseconds: 1500000000))!.timestampUtc,
+        DateTime.utc(2026, 7, 31, 14, 30, 15),
+      );
     });
 
     test('reports no timestamp before the receiver has the date', () {
