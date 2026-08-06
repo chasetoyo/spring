@@ -43,6 +43,29 @@ abstract interface class BleConnection {
   /// Sends bytes to the device.
   Future<void> write(List<int> bytes);
 
+  /// Reads one characteristic outright, off any service the device carries.
+  ///
+  /// The escape hatch from `DeviceProfile`, which describes exactly one serial
+  /// pair — a write characteristic and a notify characteristic — and so cannot
+  /// reach a read-only attribute at all. The standard Device Information
+  /// Service is the case that forced it: `0x180a` publishes a model, a serial
+  /// number and firmware and hardware revisions, none of them notifiable and
+  /// none of them reachable through a profile.
+  ///
+  /// Returns null when the device does not carry the attribute, or carries it
+  /// without the read property. **Absence is ordinary**, not a fault: every
+  /// characteristic in that service is optional and a device may publish three
+  /// of five. Throws [BleConnectionException] when the link is down or the
+  /// read is refused — failing to find out is a different fact from there
+  /// being nothing to find, and a caller that conflates them will report a
+  /// dropped link as a device with no serial number.
+  ///
+  /// Either UUID may be written at 16-, 32- or 128-bit length.
+  Future<List<int>?> readCharacteristic({
+    required String serviceUuid,
+    required String characteristicUuid,
+  });
+
   /// Drops the link and closes [input] and [state].
   Future<void> disconnect();
 }

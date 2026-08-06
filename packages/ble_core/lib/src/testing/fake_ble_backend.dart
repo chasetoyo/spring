@@ -4,6 +4,7 @@ import '../ble_backend.dart';
 import '../ble_connection.dart';
 import '../ble_device.dart';
 import '../ble_exception.dart';
+import '../ble_uuid.dart';
 import '../device_profile.dart';
 
 /// An in-memory [BleConnection] a test drives directly.
@@ -30,6 +31,20 @@ class FakeBleConnection implements BleConnection {
   /// state check and the characteristic write.
   Object? writeError;
 
+  /// Values [readCharacteristic] will return, keyed by characteristic UUID at
+  /// any length. A characteristic with no entry is one the device does not
+  /// carry, which is the ordinary case for most of the Device Information
+  /// Service.
+  final Map<String, List<int>> characteristicValues = <String, List<int>>{};
+
+  /// Characteristic UUIDs [readCharacteristic] was asked for, in order, so a
+  /// test can assert a caller did not re-read what it had already cached.
+  final List<String> reads = <String>[];
+
+  /// Set to have [readCharacteristic] throw, simulating a link that dropped
+  /// partway through a multi-characteristic read.
+  Object? readError;
+
   @override
   Stream<List<int>> get input => _input.stream;
 
@@ -50,6 +65,26 @@ class FakeBleConnection implements BleConnection {
       throw BleConnectionException('Link to $deviceId is not connected');
     }
     written.add(List<int>.unmodifiable(bytes));
+  }
+
+  @override
+  Future<List<int>?> readCharacteristic({
+    required String serviceUuid,
+    required String characteristicUuid,
+  }) async {
+    reads.add(characteristicUuid);
+    final Object? error = readError;
+    if (error != null) throw error;
+    if (!_currentState.isConnected) {
+      throw BleConnectionException('Link to $deviceId is not connected');
+    }
+    for (final MapEntry<String, List<int>> entry
+        in characteristicValues.entries) {
+      if (bleUuidEquals(entry.key, characteristicUuid)) {
+        return List<int>.unmodifiable(entry.value);
+      }
+    }
+    return null;
   }
 
   @override

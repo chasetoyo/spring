@@ -12,6 +12,7 @@ import 'ble_backend.dart';
 import 'ble_connection.dart';
 import 'ble_device.dart';
 import 'ble_exception.dart';
+import 'ble_uuid.dart';
 import 'device_profile.dart';
 
 /// The `flutter_blue_plus` implementation of [BleBackend].
@@ -242,6 +243,7 @@ class FlutterBluePlusBackend implements BleBackend {
         'service ${profile.serviceUuid}',
         profile,
         deviceId,
+        services,
       );
       final BluetoothCharacteristic writeCharacteristic = _require(
         service.characteristics.where(
@@ -251,6 +253,7 @@ class FlutterBluePlusBackend implements BleBackend {
         'write characteristic ${profile.writeCharacteristicUuid}',
         profile,
         deviceId,
+        services,
       );
       final BluetoothCharacteristic notifyCharacteristic = _require(
         service.characteristics.where(
@@ -260,10 +263,12 @@ class FlutterBluePlusBackend implements BleBackend {
         'notify characteristic ${profile.notifyCharacteristicUuid}',
         profile,
         deviceId,
+        services,
       );
 
       final _FbpConnection connection = _FbpConnection(
         device: device,
+        services: services,
         writeCharacteristic: writeCharacteristic,
         notifyCharacteristic: notifyCharacteristic,
       );
@@ -299,11 +304,19 @@ class FlutterBluePlusBackend implements BleBackend {
     String what,
     DeviceProfile profile,
     String deviceId,
+    List<BluetoothService> discovered,
   ) {
     final Iterator<T> iterator = candidates.iterator;
     if (!iterator.moveNext()) {
+      // The GATT dump is the whole point of this message. A profile is a
+      // guess about hardware — `elm327Profile`'s FFF0/FFF1/FFF2 is documented
+      // as commonly-referenced rather than verified — and the only way to fix
+      // a wrong one is to know what the device actually carries. Without this
+      // the failure reaches a user as "that doesn't look like the device you
+      // picked" and reaches a developer as nothing at all.
       throw BleProfileException(
-        '${profile.name}: $what not found on $deviceId',
+        '${profile.name}: $what not found on $deviceId. '
+        'Device exposes: ${_describeGatt(discovered)}',
       );
     }
     return iterator.current;
@@ -329,30 +342,67 @@ class FlutterBluePlusBackend implements BleBackend {
   }
 }
 
-bool _uuidEquals(Guid guid, String uuid) {
-  final String left = guid.str.toLowerCase().replaceAll('-', '');
-  final String right = uuid.toLowerCase().replaceAll('-', '');
-  return _trimBase(left) == _trimBase(right);
+bool _uuidEquals(Guid guid, String uuid) => bleUuidEquals(guid.str, uuid);
+
+/// Every service and characteristic a device carries, with the properties that
+/// decide whether a profile can use them.
+///
+/// Reads as `fff0[fff1:wW fff2:n]` — service, then its characteristics with
+/// `r`ead, `w`rite, `W`rite-without-response and `n`otify/indicate flags. Short
+/// on purpose: this goes in an exception message that has to survive being
+/// pasted out of a console, and a device carries a dozen of these.
+String _describeGatt(List<BluetoothService> services) {
+  if (services.isEmpty) {
+    // Distinct from a device with services we did not want. On Android this
+    // usually means discovery ran before the link settled.
+    return '(nothing discovered)';
+  }
+  return services
+      .map((BluetoothService service) {
+        final String characteristics = service.characteristics
+            .map(
+              (BluetoothCharacteristic c) =>
+                  '${_shortUuid(c.uuid)}:${_describeProperties(c.properties)}',
+            )
+            .join(' ');
+        return '${_shortUuid(service.uuid)}[$characteristics]';
+      })
+      .join(' ');
 }
 
-String _trimBase(String uuid) {
-  if (uuid.length == 32 && uuid.endsWith('00001000800000805f9b34fb')) {
-    return uuid.substring(0, 8).replaceFirst(RegExp(r'^0+'), '');
-  }
-  return uuid.replaceFirst(RegExp(r'^0+'), '');
+String _describeProperties(CharacteristicProperties p) {
+  final StringBuffer flags = StringBuffer();
+  if (p.read) flags.write('r');
+  if (p.write) flags.write('w');
+  if (p.writeWithoutResponse) flags.write('W');
+  if (p.notify || p.indicate) flags.write('n');
+  return flags.isEmpty ? '-' : flags.toString();
 }
+
+/// The distinguishing head of a UUID on the Bluetooth base, or the whole thing
+/// for a vendor UUID that carries no redundancy to trim.
+String _shortUuid(Guid uuid) => normalizeBleUuid(uuid.str);
 
 /// A live link, wrapping one `flutter_blue_plus` device.
 class _FbpConnection implements BleConnection {
   _FbpConnection({
     required BluetoothDevice device,
+    required List<BluetoothService> services,
     required BluetoothCharacteristic writeCharacteristic,
     required BluetoothCharacteristic notifyCharacteristic,
   }) : _device = device,
+       _services = services,
        _writeCharacteristic = writeCharacteristic,
        _notifyCharacteristic = notifyCharacteristic;
 
   final BluetoothDevice _device;
+
+  /// Everything discovery found, not only the profile's service.
+  ///
+  /// Kept from the connect rather than re-discovered per read: service
+  /// discovery is the slow part of opening a link, and a second pass while a
+  /// device is already streaming at 25 Hz is a stall no caller asked for.
+  final List<BluetoothService> _services;
   final BluetoothCharacteristic _writeCharacteristic;
   final BluetoothCharacteristic _notifyCharacteristic;
 
@@ -422,6 +472,36 @@ class _FbpConnection implements BleConnection {
         'Write to $deviceId failed: ${error.description ?? error.code}',
       );
     }
+  }
+
+  @override
+  Future<List<int>?> readCharacteristic({
+    required String serviceUuid,
+    required String characteristicUuid,
+  }) async {
+    if (!_currentState.isConnected) {
+      throw BleConnectionException('Link to $deviceId is not connected');
+    }
+
+    for (final BluetoothService service in _services) {
+      if (!_uuidEquals(service.uuid, serviceUuid)) continue;
+      for (final BluetoothCharacteristic characteristic
+          in service.characteristics) {
+        if (!_uuidEquals(characteristic.uuid, characteristicUuid)) continue;
+        // Present but not readable is the same answer as absent, and asking
+        // anyway earns a GATT error on some stacks and a hang on others.
+        if (!characteristic.properties.read) return null;
+        try {
+          return await characteristic.read();
+        } on FlutterBluePlusException catch (error) {
+          throw BleConnectionException(
+            'Read of $characteristicUuid on $deviceId failed: '
+            '${error.description ?? error.code}',
+          );
+        }
+      }
+    }
+    return null;
   }
 
   @override
