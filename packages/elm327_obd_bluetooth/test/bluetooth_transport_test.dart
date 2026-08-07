@@ -4,10 +4,10 @@ import 'package:flutter_test/flutter_test.dart';
 
 void main() {
   group('elm327Profile', () {
-    test('uses the common FFF0/FFF1/FFF2 pattern', () {
+    test('uses the confirmed FFF0/FFF2-write/FFF1-notify pattern', () {
       expect(elm327Profile.serviceUuid, 'fff0');
-      expect(elm327Profile.writeCharacteristicUuid, 'fff1');
-      expect(elm327Profile.notifyCharacteristicUuid, 'fff2');
+      expect(elm327Profile.writeCharacteristicUuid, 'fff2');
+      expect(elm327Profile.notifyCharacteristicUuid, 'fff1');
     });
 
     test('matches a device advertising the short-form service UUID', () {

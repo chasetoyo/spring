@@ -12,3 +12,7 @@ pubspec_overrides.yaml
 # Superpowers scratch docs (specs/plans) are working files for the
 # skill workflow, not project documentation - never commit them.
 docs/superpowers/
+
+# Files pulled off a device for debugging (e.g. adb-extracted GATT
+# profile dumps) - device-specific scratch, not project documentation.
+local_txt_files/

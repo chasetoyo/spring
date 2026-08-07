@@ -29,17 +29,20 @@ await transport.disconnect();
 BLE serial-bridge adapters like this typically don't need OS-level pairing
 first — a scan result is enough to connect, unlike Bluetooth Classic SPP.
 
-## GATT UUIDs — verify against your adapter
+## GATT UUIDs
 
-`BleElm327Transport.connect()` defaults to the common "HM-10 style"
-UART-over-BLE profile many budget BLE-serial OBD-II adapters use: service
-`FFF0`, write characteristic `FFF1`, notify characteristic `FFF2`
-(`BleElm327Transport.defaultServiceUuid` etc.). **This is commonly
-referenced, not verified against a specific Veepeak firmware revision** — if
-`connect()` throws an `Elm327TransportException` saying a service/
-characteristic wasn't found, inspect your adapter's actual GATT profile
-(e.g. with a generic BLE scanner app like nRF Connect) and pass the real
-UUIDs as named parameters to `connect()`.
+`elm327Profile` defaults to service `FFF0`, write characteristic `FFF2`,
+notify characteristic `FFF1` — **confirmed against a real Veepeak OBDCheck
+BLE+ unit's actual GATT profile.** Note the numbering is counter-intuitive:
+`FFF2` is the writable one, `FFF1` is the notifying one, the reverse of what
+you'd naively guess — that mismatch is exactly why an earlier attempt at
+FFF1-write/FFF2-notify failed with "characteristic not writable". Other
+adapters may still differ.
+
+If `BleBackend.connect` throws `BleProfileException` for your adapter, the
+exception reports every service/characteristic the device actually exposes
+with its read/write/notify properties — construct a `DeviceProfile` with the
+real UUIDs from there.
 
 ## Licensing note
 

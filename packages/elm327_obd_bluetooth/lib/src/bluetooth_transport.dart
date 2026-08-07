@@ -6,13 +6,19 @@ import 'package:elm327_obd/elm327_obd.dart';
 /// The GATT profile of a BLE serial-bridge OBD-II adapter.
 ///
 /// Many budget adapters — including some Veepeak OBDCheck BLE/BLE+ units —
-/// expose a generic "HM-10 style" UART-over-BLE profile: service `FFF0`, a
-/// writable characteristic `FFF1`, and a notifying characteristic `FFF2`.
+/// expose a generic "HM-10 style" UART-over-BLE profile under service
+/// `FFF0`. **Confirmed against a real Veepeak OBDCheck BLE+ unit's actual
+/// GATT profile:** `FFF2` is the writable characteristic
+/// (`write`/`writeWithoutResponse`) and `FFF1` is the notifying one — the
+/// reverse of what the FFF1/FFF2 numbering might suggest. That mismatch is
+/// exactly why an earlier attempt at FFF1-write/FFF2-notify failed with
+/// "characteristic not writable".
 ///
-/// **This is commonly-referenced, not verified against a specific Veepeak
-/// firmware revision.** If [BleBackend.connect] throws [BleProfileException]
-/// for your adapter, inspect its actual GATT profile with a BLE scanner and
-/// construct a [DeviceProfile] with the real UUIDs.
+/// Other adapters may still differ. If [BleBackend.connect] throws
+/// [BleProfileException] for your adapter, the exception reports every
+/// service/characteristic the device actually exposes with its read/write/
+/// notify properties — construct a [DeviceProfile] with the real UUIDs from
+/// there.
 ///
 /// No name filter: these adapters advertise under a wide range of names
 /// (`OBDII`, `Veepeak`, `V-LINK`, and worse), so a pattern would reject more
@@ -21,8 +27,8 @@ import 'package:elm327_obd/elm327_obd.dart';
 const DeviceProfile elm327Profile = DeviceProfile(
   name: 'ELM327',
   serviceUuid: 'fff0',
-  writeCharacteristicUuid: 'fff1',
-  notifyCharacteristicUuid: 'fff2',
+  writeCharacteristicUuid: 'fff2',
+  notifyCharacteristicUuid: 'fff1',
 );
 
 /// [elm327Profile] narrowed to adapters that name themselves Veepeak.
