@@ -1,6 +1,9 @@
 import 'package:elm327_obd/elm327_obd.dart';
+import 'package:elm327_obd_vehicle_pids/vehicle_profile.dart';
 
-/// Subaru-specific Mode 22 PIDs.
+import 'src/gr86_brz_pids.dart';
+
+/// Subaru WRX/STI-specific Mode 22 PIDs.
 ///
 /// These IDs and scaling formulas are commonly referenced in the
 /// open-source Subaru tuning community (e.g. RomRaider's ECU
@@ -12,7 +15,7 @@ import 'package:elm327_obd/elm327_obd.dart';
 /// Declared as [PidDefinition]s rather than [CustomPid]s so an app can offer
 /// them in a picker and store the choice: a [CustomPid] carries a decoder
 /// closure, which does not survive being written to disk.
-const List<PidDefinition> subaruPidDefinitions = <PidDefinition>[
+const List<PidDefinition> subaruWrxStiPidDefinitions = <PidDefinition>[
   PidDefinition(
     name: 'Manifold Relative Pressure',
     unit: 'psi',
@@ -26,6 +29,20 @@ const List<PidDefinition> subaruPidDefinitions = <PidDefinition>[
 ];
 
 /// The same catalog in the form [Elm327Client.queryCustomPid] takes directly.
-final subaruPids = PidSet('Subaru', <CustomPid>[
-  for (final definition in subaruPidDefinitions) definition.toCustomPid(),
+final subaruWrxStiPids = PidSet('Subaru WRX/STI', <CustomPid>[
+  for (final definition in subaruWrxStiPidDefinitions) definition.toCustomPid(),
 ]);
+
+/// Subaru vehicle profiles, looked up by make/model/year via
+/// [findVehicleProfile]. Currently just the BRZ (2022+, Gen 2, shares
+/// its FA24 platform with the Toyota GR86 — see `toyota.dart` and
+/// `src/gr86_brz_pids.dart` for the shared PID catalog and its
+/// provenance/confidence notes).
+final subaruProfiles = [
+  VehicleProfile(
+    make: 'Subaru',
+    model: 'BRZ',
+    yearStart: 2022,
+    pidSet: gr86Brz2022PidSet,
+  ),
+];

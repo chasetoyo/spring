@@ -27,8 +27,17 @@ void main() {
     expect(StandardPids.engineLoad.decode([0x00]), 0);
   });
 
-  test('all lists every standard PID exactly once', () {
-    expect(StandardPids.all, hasLength(8));
-    expect(StandardPids.all.map((p) => p.pid).toSet(), hasLength(8));
+  test('engineOilTemp decodes using the standard temperature formula', () {
+    expect(StandardPids.engineOilTemp.requestHex, '015C');
+    expect(StandardPids.engineOilTemp.decode([0x5A]), 50);
+  });
+
+  test('all lists every standard PID exactly once, all under mode 01', () {
+    expect(StandardPids.all, isNotEmpty);
+    expect(
+      StandardPids.all.map((p) => p.pid).toSet(),
+      hasLength(StandardPids.all.length),
+    );
+    expect(StandardPids.all.every((p) => p.mode == 0x01), isTrue);
   });
 }

@@ -33,8 +33,10 @@ final value = await client.queryCustomPid(someCustomPid);
   response parsing, including multiline/multi-ECU reassembly.
 - `decodeDtc` / `decodeDtcFrame` — diagnostic trouble code decoding
   (`P0133`-style codes) per the SAE J1979 bit table.
-- `StandardPids` — common Mode 01 PIDs (RPM, speed, coolant temp, throttle
-  position, engine load, MAF, fuel level, intake air temp).
+- `StandardPids` — the scalar/numeric standard Mode 01 PIDs from SAE J1979
+  (RPM, speed, temperatures, fuel trims, pressures, torque, etc. — see
+  `StandardPids.all` and its doc comment for what's covered and what's
+  deliberately excluded).
 - `CustomPid` / `PidSet` — the generic mechanism manufacturer-specific PID
   catalogs (like `elm327_obd_vehicle_pids`) are built on, supporting
   physical addressing via a target header.

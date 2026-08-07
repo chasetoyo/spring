@@ -15,7 +15,7 @@ and status summary.
 |---|---|---|
 | [`packages/ble_core`](packages/ble_core) | Flutter | Vendor-neutral BLE plumbing: scanning, permissions, connections and device profiles, shared by every device family |
 | [`packages/elm327_obd`](packages/elm327_obd) | Pure Dart | AT-command/OBD-II protocol core: no Flutter or Bluetooth dependency |
-| [`packages/elm327_obd_vehicle_pids`](packages/elm327_obd_vehicle_pids) | Pure Dart | Manufacturer-specific custom PID catalogs (Subaru, with more to come) |
+| [`packages/elm327_obd_vehicle_pids`](packages/elm327_obd_vehicle_pids) | Pure Dart | Manufacturer-specific custom PID catalogs, looked up by make/model/year (currently Gen 2 Toyota GR86 / Subaru BRZ, with more to come) |
 | [`packages/elm327_obd_bluetooth`](packages/elm327_obd_bluetooth) | Flutter | Binds the OBD-II core to a `ble_core` link, plus the ELM327 GATT profile |
 | [`apps/elm327_demo`](apps/elm327_demo) | Flutter app | Device picker, live dashboard, and raw AT/OBD terminal for end-to-end verification |
 

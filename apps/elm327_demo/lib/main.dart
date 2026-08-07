@@ -1,8 +1,10 @@
 import 'package:elm327_obd_bluetooth/elm327_obd_bluetooth.dart';
+import 'package:elm327_obd_vehicle_pids/vehicle_profile.dart';
 import 'package:flutter/material.dart';
 
 import 'connected_home_screen.dart';
 import 'device_picker_screen.dart';
+import 'vehicle_select_screen.dart';
 
 void main() {
   runApp(const Elm327DemoApp());
@@ -25,6 +27,8 @@ class _RootScreen extends StatefulWidget {
 class _RootScreenState extends State<_RootScreen> {
   final BleBackend _backend = FlutterBluePlusBackend();
   Elm327BleClient? _client;
+  VehicleProfile? _vehicleProfile;
+  bool _vehicleSelected = false;
 
   @override
   void dispose() {
@@ -42,6 +46,16 @@ class _RootScreenState extends State<_RootScreen> {
         onConnected: (connected) => setState(() => _client = connected),
       );
     }
-    return ConnectedHomeScreen(client: client);
+    if (!_vehicleSelected) {
+      return VehicleSelectScreen(
+        onSelected: (profile) {
+          setState(() {
+            _vehicleProfile = profile;
+            _vehicleSelected = true;
+          });
+        },
+      );
+    }
+    return ConnectedHomeScreen(client: client, vehicleProfile: _vehicleProfile);
   }
 }
