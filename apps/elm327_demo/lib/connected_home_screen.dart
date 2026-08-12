@@ -2,10 +2,11 @@ import 'package:elm327_obd/elm327_obd.dart';
 import 'package:flutter/material.dart';
 
 import 'dashboard_screen.dart';
+import 'misfire_screen.dart';
 import 'terminal_screen.dart';
 
 /// The post-connection home: a tab bar switching between the live
-/// [DashboardScreen] and the raw [TerminalScreen].
+/// [DashboardScreen], the [MisfireScreen] and the raw [TerminalScreen].
 class ConnectedHomeScreen extends StatelessWidget {
   const ConnectedHomeScreen({required this.client, super.key});
 
@@ -14,13 +15,14 @@ class ConnectedHomeScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return DefaultTabController(
-      length: 2,
+      length: 3,
       child: Scaffold(
         appBar: AppBar(
           title: Text('Connected — ${client.currentProtocol ?? '...'}'),
           bottom: const TabBar(
             tabs: [
               Tab(text: 'Dashboard'),
+              Tab(text: 'Misfire'),
               Tab(text: 'Terminal'),
             ],
           ),
@@ -28,6 +30,7 @@ class ConnectedHomeScreen extends StatelessWidget {
         body: TabBarView(
           children: [
             DashboardScreen(client: client),
+            MisfireScreen(client: client),
             TerminalScreen(client: client),
           ],
         ),

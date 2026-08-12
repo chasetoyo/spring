@@ -40,6 +40,8 @@ dependencies:
     path: ../../packages/elm327_obd
   elm327_obd_bluetooth:
     path: ../../packages/elm327_obd_bluetooth
+  elm327_obd_vehicle_pids:
+    path: ../../packages/elm327_obd_vehicle_pids
 
 dev_dependencies:
   flutter_test:
